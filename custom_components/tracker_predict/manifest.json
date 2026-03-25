@@ -1,0 +1,11 @@
+{
+  "domain": "tracker_predict",
+  "name": "Tracker Predict",
+  "version": "0.1.0",
+  "documentation": "https://github.com/jonathanjouty/hacs-octopus-tracker-predict",
+  "dependencies": [],
+  "codeowners": ["@jonathanjouty"],
+  "requirements": [],
+  "iot_class": "cloud_polling",
+  "config_flow": true
+}
