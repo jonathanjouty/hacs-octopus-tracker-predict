@@ -20,6 +20,11 @@ DEFAULT_CHEAP_THRESHOLD_PERCENTILE = 20
 DEFAULT_SLOPE = 0.56
 DEFAULT_INTERCEPT = 12.75
 
+# Default product codes — Tracker is no longer listed in the Octopus products
+# API but the tariff endpoints still work with known product codes.
+DEFAULT_AGILE_PRODUCT = "AGILE-24-10-01"
+DEFAULT_TRACKER_PRODUCT = "SILVER-24-04-03"
+
 AGILE_PREDICT_URL = "https://agilepredict.com/api/{region}"
 AGILE_PREDICT_ALT_URL = "https://prices.fly.dev/api/{region}"
 

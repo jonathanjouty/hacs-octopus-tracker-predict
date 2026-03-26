@@ -10,8 +10,10 @@ from datetime import datetime, timedelta, timezone
 from aiohttp import ClientSession
 
 from .const import (
+    DEFAULT_AGILE_PRODUCT,
     DEFAULT_INTERCEPT,
     DEFAULT_SLOPE,
+    DEFAULT_TRACKER_PRODUCT,
     OCTOPUS_API_BASE,
     OCTOPUS_PRODUCTS_URL,
 )
@@ -238,11 +240,14 @@ async def calibrate(
     # Discover product codes if not provided
     if not agile_product:
         agile_product = await discover_product_code(session, "AGILE")
+        if not agile_product:
+            agile_product = DEFAULT_AGILE_PRODUCT
+            _LOGGER.info("Using default Agile product code: %s", agile_product)
     if not tracker_product:
-        for prefix in ("SILVER-FLEX", "SILVER-VAR", "SILVER-BB", "SILVER"):
-            tracker_product = await discover_product_code(session, prefix)
-            if tracker_product:
-                break
+        # Tracker is no longer listed in the Octopus products API,
+        # so discovery will fail. Fall back to the known default.
+        tracker_product = DEFAULT_TRACKER_PRODUCT
+        _LOGGER.info("Using default Tracker product code: %s", tracker_product)
 
     if not agile_product or not tracker_product:
         _LOGGER.warning(

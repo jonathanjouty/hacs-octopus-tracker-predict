@@ -24,6 +24,7 @@ from custom_components.tracker_predict.calibration import (
 from custom_components.tracker_predict.const import (
     AGILE_PREDICT_ALT_URL,
     AGILE_PREDICT_URL,
+    DEFAULT_TRACKER_PRODUCT,
     OCTOPUS_PRODUCTS_URL,
 )
 
@@ -53,17 +54,13 @@ async def session():
         yield s
 
 
-async def _discover_tracker_product(session) -> str | None:
-    """Try multiple prefixes to find the Tracker product code.
+def _tracker_product() -> str:
+    """Return the known Tracker product code.
 
-    Octopus has used different product code prefixes for Tracker over time
-    (SILVER-FLEX, SILVER-VAR, SILVER-BB, etc).
+    Tracker products are no longer listed in the Octopus products API,
+    so we use the hardcoded default directly.
     """
-    for prefix in ["SILVER-FLEX", "SILVER-VAR", "SILVER-BB", "SILVER"]:
-        code = await discover_product_code(session, prefix)
-        if code:
-            return code
-    return None
+    return DEFAULT_TRACKER_PRODUCT
 
 
 # ── Agile Predict API ─────────────────────────────────────────────────────
@@ -199,11 +196,12 @@ class TestOctopusProducts:
         assert code is not None, "Failed to discover any AGILE product"
         assert code.startswith("AGILE"), f"Expected AGILE prefix, got {code}"
 
-    async def test_discover_tracker_product(self, session):
-        """Should find a current Tracker product code."""
-        code = await _discover_tracker_product(session)
-        assert code is not None, "Failed to discover any Tracker product (tried SILVER-FLEX, SILVER-VAR, SILVER-BB, SILVER)"
-        assert "SILVER" in code or "TRACK" in code.upper(), f"Unexpected product code: {code}"
+    async def test_tracker_product_rates_accessible(self, session):
+        """The known Tracker product code should return valid rates."""
+        product = _tracker_product()
+        rates = await fetch_octopus_rates(session, product, "A", days=3)
+        assert len(rates) > 0, f"No rates returned for Tracker product {product}"
+        assert "value_inc_vat" in rates[0], "Rate missing value_inc_vat"
 
 
 class TestOctopusRates:
@@ -227,8 +225,7 @@ class TestOctopusRates:
 
     async def test_fetch_tracker_rates(self, session):
         """Fetch recent Tracker rates and validate structure."""
-        product = await _discover_tracker_product(session)
-        assert product is not None, "Could not discover Tracker product"
+        product = _tracker_product()
 
         rates = await fetch_octopus_rates(session, product, "A", days=7)
         assert len(rates) > 0, "No Tracker rates returned"
@@ -256,8 +253,7 @@ class TestOctopusRates:
 
     async def test_tracker_rates_are_daily(self, session):
         """Tracker rates should have ~1 rate per day (not half-hourly)."""
-        product = await _discover_tracker_product(session)
-        assert product is not None, "Could not discover Tracker product"
+        product = _tracker_product()
 
         rates = await fetch_octopus_rates(session, product, "A", days=7)
         daily = compute_daily_means(rates)
