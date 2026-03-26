@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 
 import aiohttp
 import pytest
+import pytest_asyncio
 
 from custom_components.tracker_predict.calibration import (
     compute_daily_means,
@@ -45,7 +46,7 @@ pytestmark = [
 ]
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def session():
     """Create an aiohttp session for tests."""
     async with aiohttp.ClientSession(timeout=_TIMEOUT) as s:
@@ -58,7 +59,6 @@ async def session():
 class TestAgilePredict:
     """Tests against the live Agile Predict API."""
 
-    @pytest.mark.asyncio
     async def test_fetch_forecast_region_a(self, session):
         """Fetch a forecast for region A and validate structure."""
         url = AGILE_PREDICT_URL.format(region="A")
@@ -100,7 +100,6 @@ class TestAgilePredict:
         dt = datetime.fromisoformat(slot["date_time"].replace("Z", "+00:00"))
         assert dt.tzinfo is not None or "Z" in slot["date_time"]
 
-    @pytest.mark.asyncio
     async def test_forecast_has_multiple_days(self, session):
         """A 7-day forecast should span multiple dates."""
         url = AGILE_PREDICT_URL.format(region="A")
@@ -114,7 +113,6 @@ class TestAgilePredict:
         dates = {p["date_time"][:10] for p in prices}
         assert len(dates) >= 2, f"Expected multiple dates in 7-day forecast, got {dates}"
 
-    @pytest.mark.asyncio
     async def test_forecast_slots_are_half_hourly(self, session):
         """Slots should be at 30-minute intervals."""
         url = AGILE_PREDICT_URL.format(region="A")
@@ -131,7 +129,6 @@ class TestAgilePredict:
             diff_minutes = (dt1 - dt0).total_seconds() / 60
             assert diff_minutes == 30, f"Expected 30-minute intervals, got {diff_minutes}"
 
-    @pytest.mark.asyncio
     async def test_alt_endpoint_also_works(self, session):
         """The Fly.io mirror should return the same structure."""
         url = AGILE_PREDICT_ALT_URL.format(region="A")
@@ -146,7 +143,6 @@ class TestAgilePredict:
         assert "prices" in data[0]
         assert len(data[0]["prices"]) > 0
 
-    @pytest.mark.asyncio
     async def test_all_regions_return_data(self, session):
         """Spot-check a few regions to verify they all work."""
         for region in ["A", "C", "H", "P"]:
@@ -167,7 +163,6 @@ class TestAgilePredict:
 class TestOctopusProducts:
     """Tests against the Octopus Energy products API."""
 
-    @pytest.mark.asyncio
     async def test_products_endpoint_reachable(self, session):
         """The products listing endpoint should return paginated results."""
         async with session.get(
@@ -185,14 +180,12 @@ class TestOctopusProducts:
         assert "code" in product, "Product missing 'code'"
         assert "display_name" in product or "full_name" in product
 
-    @pytest.mark.asyncio
     async def test_discover_agile_product(self, session):
         """Should find a current AGILE product code."""
         code = await discover_product_code(session, "AGILE")
         assert code is not None, "Failed to discover any AGILE product"
         assert code.startswith("AGILE"), f"Expected AGILE prefix, got {code}"
 
-    @pytest.mark.asyncio
     async def test_discover_tracker_product(self, session):
         """Should find a current SILVER (Tracker) product code."""
         code = await discover_product_code(session, "SILVER")
@@ -203,7 +196,6 @@ class TestOctopusProducts:
 class TestOctopusRates:
     """Tests against the Octopus Energy tariff rates API."""
 
-    @pytest.mark.asyncio
     async def test_fetch_agile_rates(self, session):
         """Fetch recent Agile rates and validate structure."""
         product = await discover_product_code(session, "AGILE")
@@ -220,7 +212,6 @@ class TestOctopusRates:
         # Should have roughly 48 slots per day × 7 days = 336, allow some slack
         assert len(rates) > 100, f"Expected 100+ rates for 7 days, got {len(rates)}"
 
-    @pytest.mark.asyncio
     async def test_fetch_tracker_rates(self, session):
         """Fetch recent Tracker rates and validate structure."""
         product = await discover_product_code(session, "SILVER")
@@ -234,7 +225,6 @@ class TestOctopusRates:
         assert "value_inc_vat" in rate
         assert isinstance(rate["value_inc_vat"], (int, float))
 
-    @pytest.mark.asyncio
     async def test_agile_rates_compute_daily_means(self, session):
         """Agile rates should produce valid daily means."""
         product = await discover_product_code(session, "AGILE")
@@ -251,7 +241,6 @@ class TestOctopusRates:
             # Rates should be reasonable (negative is possible for Agile but bounded)
             assert -50 < mean < 200, f"Mean {mean} for {date_str} seems out of range"
 
-    @pytest.mark.asyncio
     async def test_tracker_rates_are_daily(self, session):
         """Tracker rates should have ~1 rate per day (not half-hourly)."""
         product = await discover_product_code(session, "SILVER")
@@ -273,7 +262,6 @@ class TestOctopusRates:
 class TestEndToEnd:
     """Validate the full pipeline from live API data."""
 
-    @pytest.mark.asyncio
     async def test_agile_predict_to_tracker_estimate(self, session):
         """Fetch a live forecast and run it through the transformation."""
         from custom_components.tracker_predict.calibration import CalibrationModel
