@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.12", "3.13"]
+        python-version: ["3.14"]
 
     steps:
       - uses: actions/checkout@v4
@@ -29,7 +29,6 @@ jobs:
 
       - name: Run live API tests
         run: pytest tests/test_live_api.py -v -m live_api
-        continue-on-error: true
 
   validate:
     runs-on: ubuntu-latest
