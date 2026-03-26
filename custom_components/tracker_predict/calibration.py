@@ -117,23 +117,36 @@ async def discover_product_code(
     """Discover the latest product code matching a prefix (e.g. 'AGILE' or 'SILVER').
 
     Searches the Octopus products API for the most recent matching product.
+    Paginates through results since the product listing can span multiple pages.
     """
     try:
-        async with session.get(
-            OCTOPUS_PRODUCTS_URL,
-            params={"is_variable": "true", "page_size": 100},
-        ) as resp:
-            if resp.status != 200:
-                _LOGGER.warning(
-                    "Failed to fetch Octopus products (status %d)", resp.status
-                )
-                return None
-            data = await resp.json()
+        all_results: list[dict] = []
+        url: str | None = OCTOPUS_PRODUCTS_URL
+        params: dict = {"page_size": "100"}
 
-        results = data.get("results", [])
-        # Filter to products matching our prefix
+        while url:
+            async with session.get(url, params=params) as resp:
+                if resp.status != 200:
+                    _LOGGER.warning(
+                        "Failed to fetch Octopus products (status %d)", resp.status
+                    )
+                    break
+                data = await resp.json()
+
+            all_results.extend(data.get("results", []))
+
+            # Check if we already have matches — no need to paginate further
+            matches = [
+                p for p in all_results if p.get("code", "").startswith(prefix)
+            ]
+            if matches:
+                break
+
+            url = data.get("next")
+            params = {}  # next URL already includes params
+
         matches = [
-            p for p in results if p.get("code", "").startswith(prefix)
+            p for p in all_results if p.get("code", "").startswith(prefix)
         ]
 
         if not matches:
@@ -226,7 +239,10 @@ async def calibrate(
     if not agile_product:
         agile_product = await discover_product_code(session, "AGILE")
     if not tracker_product:
-        tracker_product = await discover_product_code(session, "SILVER")
+        for prefix in ("SILVER-FLEX", "SILVER-VAR", "SILVER-BB", "SILVER"):
+            tracker_product = await discover_product_code(session, prefix)
+            if tracker_product:
+                break
 
     if not agile_product or not tracker_product:
         _LOGGER.warning(

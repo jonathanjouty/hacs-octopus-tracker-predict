@@ -53,6 +53,19 @@ async def session():
         yield s
 
 
+async def _discover_tracker_product(session) -> str | None:
+    """Try multiple prefixes to find the Tracker product code.
+
+    Octopus has used different product code prefixes for Tracker over time
+    (SILVER-FLEX, SILVER-VAR, SILVER-BB, etc).
+    """
+    for prefix in ["SILVER-FLEX", "SILVER-VAR", "SILVER-BB", "SILVER"]:
+        code = await discover_product_code(session, prefix)
+        if code:
+            return code
+    return None
+
+
 # ── Agile Predict API ─────────────────────────────────────────────────────
 
 
@@ -187,10 +200,10 @@ class TestOctopusProducts:
         assert code.startswith("AGILE"), f"Expected AGILE prefix, got {code}"
 
     async def test_discover_tracker_product(self, session):
-        """Should find a current SILVER (Tracker) product code."""
-        code = await discover_product_code(session, "SILVER")
-        assert code is not None, "Failed to discover any SILVER/Tracker product"
-        assert code.startswith("SILVER"), f"Expected SILVER prefix, got {code}"
+        """Should find a current Tracker product code."""
+        code = await _discover_tracker_product(session)
+        assert code is not None, "Failed to discover any Tracker product (tried SILVER-FLEX, SILVER-VAR, SILVER-BB, SILVER)"
+        assert "SILVER" in code or "TRACK" in code.upper(), f"Unexpected product code: {code}"
 
 
 class TestOctopusRates:
@@ -214,8 +227,8 @@ class TestOctopusRates:
 
     async def test_fetch_tracker_rates(self, session):
         """Fetch recent Tracker rates and validate structure."""
-        product = await discover_product_code(session, "SILVER")
-        assert product is not None, "Could not discover SILVER product"
+        product = await _discover_tracker_product(session)
+        assert product is not None, "Could not discover Tracker product"
 
         rates = await fetch_octopus_rates(session, product, "A", days=7)
         assert len(rates) > 0, "No Tracker rates returned"
@@ -243,8 +256,8 @@ class TestOctopusRates:
 
     async def test_tracker_rates_are_daily(self, session):
         """Tracker rates should have ~1 rate per day (not half-hourly)."""
-        product = await discover_product_code(session, "SILVER")
-        assert product is not None
+        product = await _discover_tracker_product(session)
+        assert product is not None, "Could not discover Tracker product"
 
         rates = await fetch_octopus_rates(session, product, "A", days=7)
         daily = compute_daily_means(rates)
