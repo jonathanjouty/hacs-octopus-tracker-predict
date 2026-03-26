@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main, claude/*]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: pip install pytest pytest-asyncio aiohttp
+
+      - name: Run unit tests
+        run: pytest tests/test_calibration.py tests/test_coordinator.py -v
+
+      - name: Run live API tests
+        run: pytest tests/test_live_api.py -v -m live_api
+        continue-on-error: true
+
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate manifest.json
+        run: python -c "import json; json.load(open('custom_components/tracker_predict/manifest.json'))"
+
+      - name: Validate strings.json
+        run: python -c "import json; json.load(open('custom_components/tracker_predict/strings.json'))"
+
+      - name: Validate hacs.json
+        run: python -c "import json; json.load(open('hacs.json'))"
+
+      - name: Check Python syntax
+        run: python -m py_compile custom_components/tracker_predict/calibration.py && python -m py_compile custom_components/tracker_predict/const.py
