@@ -1,0 +1,27 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Tracker Predict",
+        "description": "Predict Octopus Tracker electricity rates from Agile Predict forecasts.",
+        "data": {
+          "region": "Octopus Energy region"
+        }
+      },
+      "options": {
+        "title": "Tracker Predict Options",
+        "data": {
+          "poll_interval_minutes": "Poll interval (minutes)",
+          "calibration_days": "Calibration history (days)",
+          "calibration_interval_hours": "Calibration interval (hours)",
+          "cheap_threshold_percentile": "Cheap day threshold (percentile)",
+          "agile_product_code": "Agile product code (leave blank for auto)",
+          "tracker_product_code": "Tracker product code (leave blank for auto)"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "This region is already configured."
+    }
+  }
+}

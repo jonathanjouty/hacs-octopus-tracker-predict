@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main, claude/*]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.13", "3.14"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+
+      - name: Install dependencies
+        run: pip install pytest "pytest-asyncio>=0.23" aiohttp
+
+      - name: Run unit tests
+        run: pytest tests/test_calibration.py tests/test_coordinator.py -v
+
+  live-api:
+    runs-on: ubuntu-latest
+    # Separate job so flaky API failures don't block the PR
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: pip install pytest "pytest-asyncio>=0.23" aiohttp
+
+      - name: Run live API tests
+        run: pytest tests/test_live_api.py -v
+
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate manifest.json
+        run: python -c "import json; json.load(open('custom_components/tracker_predict/manifest.json'))"
+
+      - name: Validate strings.json
+        run: python -c "import json; json.load(open('custom_components/tracker_predict/strings.json'))"
+
+      - name: Validate hacs.json
+        run: python -c "import json; json.load(open('hacs.json'))"
+
+      - name: Check Python syntax
+        run: python -m py_compile custom_components/tracker_predict/calibration.py && python -m py_compile custom_components/tracker_predict/const.py
