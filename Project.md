@@ -49,6 +49,13 @@ The integration is **functional but pre-release**. Core logic is implemented, un
 13. **Configurable product codes** — UI option to override the hardcoded AGILE/SILVER product codes
 14. **HACS default repository submission** — Once stable, submit to the HACS default repo list
 
+## Release workflow
+
+- **Now**: Option A — manual. Run `git tag vX.Y.Z && git push origin vX.Y.Z` locally, then create the GitHub release via the UI.
+- **Later**: Option C — add a `release.yml` workflow with `workflow_dispatch` trigger and a version input, allowing a release to be triggered directly from the GitHub Actions tab without needing local access.
+
+HACS requires a git tag matching the version in `manifest.json` and a corresponding GitHub release.
+
 ## Known issues
 
 - **Tracker product discovery is broken**: Octopus delisted Tracker products from their API. We hardcode `SILVER-24-04-03`. If Octopus changes product codes, this will need updating.
