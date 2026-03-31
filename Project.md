@@ -12,7 +12,8 @@ The integration is **functional and tested in a real HA instance**. Core logic i
 - Linear regression calibration from historical Agile vs Tracker data
 - Forecast transformation: daily means, confidence levels, clamping
 - 6 entities grouped under a device: today rank, full forecast, cheapest 5d, cheapest 10d, last updated, forecast calendar
-- 38 unit tests (calibration + coordinator + calendar)
+- Calibration model persisted to HA storage (survives restarts, cleaned up on removal)
+- 40 unit tests (calibration + coordinator + calendar + persistence)
 - 13 live API tests (Agile Predict + Octopus Energy)
 - GitHub Actions CI (unit tests on 3.13/3.14, live API tests, JSON validation)
 - Tested in a real HA instance via manual file copy — entities appear and update correctly
@@ -22,7 +23,7 @@ The integration is **functional and tested in a real HA instance**. Core logic i
 
 ### High priority
 
-1. **Auto recalibration persistence** — `model_last_calibrated` (exposed in the forecast sensor attributes) resets on every HA restart since the calibration model lives only in memory. Persist the last-good model to `hass.data` storage or a JSON file so restarts don't force an immediate recalibration API call. Also handle Octopus API outages gracefully by falling back to cached model.
+1. ~~**Auto recalibration persistence**~~ — **Done.** Calibration model is persisted via HA's `Store` to `.storage/tracker_predict.calibration.<entry_id>`. Loaded on startup; skips recalibration if still within interval. Falls back to cached/default model on API outage. Storage file cleaned up on integration removal. Type-validated on load.
 
 ### Medium priority
 
@@ -128,5 +129,5 @@ HACS requires a git tag matching the version in `manifest.json` and a correspond
 
 - **Tracker product discovery is broken**: Octopus delisted Tracker products from their API. We hardcode `SILVER-24-04-03`. If Octopus changes product codes, this will need updating.
 - **Agile product discovery may also break**: Currently discovers via API but falls back to `AGILE-24-10-01`.
-- **No persistent storage**: Calibration model is recalculated on every HA restart. Could use `hass.data` or a JSON file for caching.
+- ~~**No persistent storage**~~: Fixed — calibration model now persisted via HA `Store`.
 - **Default model may drift**: The fallback slope=0.56/intercept=12.75 is from 2025 East England data. May need periodic updating.
