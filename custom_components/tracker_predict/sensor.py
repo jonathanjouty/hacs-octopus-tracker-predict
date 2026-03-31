@@ -268,8 +268,8 @@ class TrackerPredictLastUpdatedSensor(
         """Initialize."""
         super().__init__(coordinator)
         self._region = region
-        self._attr_unique_id = f"tracker_predict_{region}_last_updated"
-        self._attr_name = f"Tracker Predict Last Updated ({region})"
+        self._attr_unique_id = f"tracker_predict_{region}_forecast_generated_at"
+        self._attr_name = f"Tracker Predict Forecast Generated ({region})"
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -277,6 +277,6 @@ class TrackerPredictLastUpdatedSensor(
 
     @property
     def native_value(self):
-        """Return the last successful fetch time."""
+        """Return when AgilePredict last generated the forecast."""
         data = self.coordinator.data
-        return data.last_updated if data else None
+        return data.forecast_generated_at if data else None
