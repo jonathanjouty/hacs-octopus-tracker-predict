@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceEntryType
@@ -30,6 +30,7 @@ async def async_setup_entry(
         TrackerPredictForecastSensor(coordinator, entry, region),
         TrackerPredictCheapestSensor(coordinator, entry, region, window=5),
         TrackerPredictCheapestSensor(coordinator, entry, region, window=10),
+        TrackerPredictLastUpdatedSensor(coordinator, entry, region),
     ]
     async_add_entities(entities)
 
@@ -96,7 +97,7 @@ class TrackerPredictTodaySensor(
         """Initialize."""
         super().__init__(coordinator)
         self._region = region
-        self._attr_unique_id = f"tracker_predict_{region}_today"
+        self._attr_unique_id = f"tracker_predict_{region}_today_rank"
         self._attr_name = f"Tracker Predict Today Rank ({region})"
 
     @property
@@ -125,19 +126,11 @@ class TrackerPredictTodaySensor(
         forecast = _get_today_forecast(data)
         if not forecast or not data:
             return {}
-
-        attrs = {
-            "forecast_date": forecast.date,
-            "tracker_est": forecast.tracker_est,
-            "tracker_low": forecast.tracker_low,
-            "tracker_high": forecast.tracker_high,
+        return {
             "confidence": forecast.confidence,
             "days_in_window": len(data.forecasts),
             "stale": data.stale,
         }
-        if data.last_updated:
-            attrs["last_updated"] = data.last_updated.isoformat()
-        return attrs
 
 
 class TrackerPredictForecastSensor(
@@ -186,6 +179,8 @@ class TrackerPredictForecastSensor(
             "model_last_calibrated": data.model.calibrated_at.isoformat(),
             "stale": data.stale,
         }
+        if data.forecast_generated_at:
+            attrs["forecast_generated_at"] = data.forecast_generated_at.isoformat()
         return attrs
 
 
@@ -254,3 +249,34 @@ class TrackerPredictCheapestSensor(
             "days_away": days_away,
             "confidence": cheapest.confidence,
         }
+
+
+class TrackerPredictLastUpdatedSensor(
+    CoordinatorEntity[TrackerPredictCoordinator], SensorEntity
+):
+    """Sensor showing when the coordinator last successfully fetched data."""
+
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_icon = "mdi:clock-outline"
+
+    def __init__(
+        self,
+        coordinator: TrackerPredictCoordinator,
+        entry: ConfigEntry,
+        region: str,
+    ) -> None:
+        """Initialize."""
+        super().__init__(coordinator)
+        self._region = region
+        self._attr_unique_id = f"tracker_predict_{region}_last_updated"
+        self._attr_name = f"Tracker Predict Last Updated ({region})"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return _make_device_info(self._region)
+
+    @property
+    def native_value(self):
+        """Return the last successful fetch time."""
+        data = self.coordinator.data
+        return data.last_updated if data else None

@@ -11,7 +11,7 @@ The integration is **functional but pre-release**. Core logic is implemented, un
 - Octopus historical rate fetching with pagination
 - Linear regression calibration from historical Agile vs Tracker data
 - Forecast transformation: daily means, confidence levels, clamping
-- 6 entities grouped under a device: today rank, full forecast, cheapest 5d, cheapest 10d, cheap-today binary sensor, forecast calendar
+- 6 entities grouped under a device: today rank, full forecast, cheapest 5d, cheapest 10d, last updated, forecast calendar
 - 38 unit tests (calibration + coordinator + calendar)
 - 13 live API tests (Agile Predict + Octopus Energy)
 - GitHub Actions CI (unit tests on 3.13/3.14, live API tests, JSON validation)
@@ -42,6 +42,7 @@ The integration is **functional but pre-release**. Core logic is implemented, un
 7. **Unit tests for config_flow** — Currently untested; needs HA test harness or more mocking
 8. **Unit tests for __init__.py** — Test setup/unload entry lifecycle
 9. **Improve confidence levels** — Currently based on fixed thresholds; could use prediction intervals from regression
+10. **Auto recalibration persistence** — `model_last_calibrated` (exposed in the forecast sensor attributes) resets on every HA restart since the calibration model lives only in memory. Consider persisting the last-good model to `hass.data` storage or a JSON file so restarts don't force an immediate recalibration API call.
 
 ### Lower priority
 
@@ -107,10 +108,10 @@ Alternatives:
 **Entities:**
 - [ ] A "Tracker Predict (X)" device appears in Settings → Devices
 - [ ] 6 entities grouped under it: today rank, forecast, cheapest_5d, cheapest_10d, cheap_today, calendar
-- [ ] `sensor.*_today` has an integer state (rank, 1 = cheapest) and attributes: `tracker_est`, `tracker_low`, `tracker_high`, `confidence`, `days_in_window`
-- [ ] `sensor.*_forecast` has a `forecast` attribute containing a list of day objects with `date`, `tracker_est`, `rank`
+- [ ] `sensor.*_today_rank` has an integer state (rank, 1 = cheapest) and attributes: `confidence`, `days_in_window`, `stale`
+- [ ] `sensor.*_last_updated` has a timestamp state showing last successful fetch
+- [ ] `sensor.*_forecast` has a `forecast` attribute (list of day objects with `date`, `tracker_est`, `rank`) and a `forecast_generated_at` attribute showing when AgilePredict generated the forecast
 - [ ] `sensor.*_cheapest_5d` and `*_cheapest_10d` show a future date as their state
-- [ ] `binary_sensor.*_cheap_today` shows ON or OFF
 - [ ] `calendar.*` appears in calendar card and shows all-day events with predicted rates and rank labels
 
 **Behaviour over time:**
