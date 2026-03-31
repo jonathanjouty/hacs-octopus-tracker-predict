@@ -1,6 +1,7 @@
 """Tests for the coordinator transformation logic."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 import pytest
 
@@ -168,3 +169,57 @@ class TestRankedForecasts:
         from custom_components.tracker_predict.sensor import _ranked_forecasts
         assert _ranked_forecasts(None) == []
         assert _ranked_forecasts(TrackerPredictData()) == []
+
+
+class TestPartialTodayFiltering:
+    """Tests for excluding today when it has too few slots."""
+
+    def _today_str(self):
+        return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    def _tomorrow_str(self):
+        return (datetime.now(timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%d")
+
+    def test_partial_today_excluded(self):
+        """Today with fewer than 48 slots is excluded from forecasts."""
+        coord = FakeCoordinator()
+        today = self._today_str()
+        tomorrow = self._tomorrow_str()
+        prices = make_prices([
+            (today, 10, 5.0, 0.1),       # partial today — cheap evening slots
+            (tomorrow, 48, 25.0, 0.2),    # full tomorrow
+        ])
+        forecasts = coord._transform_forecast(prices)
+        dates = [f.date for f in forecasts]
+        assert today not in dates
+        assert tomorrow in dates
+        assert len(forecasts) == 1
+
+    def test_full_today_included(self):
+        """Today with a full 48 slots is kept in forecasts."""
+        coord = FakeCoordinator()
+        today = self._today_str()
+        tomorrow = self._tomorrow_str()
+        prices = make_prices([
+            (today, 48, 20.0, 0.1),
+            (tomorrow, 48, 25.0, 0.2),
+        ])
+        forecasts = coord._transform_forecast(prices)
+        dates = [f.date for f in forecasts]
+        assert today in dates
+        assert tomorrow in dates
+        assert len(forecasts) == 2
+
+    def test_partial_future_day_not_excluded(self):
+        """A future day with fewer than 48 slots is NOT filtered out."""
+        coord = FakeCoordinator()
+        tomorrow = self._tomorrow_str()
+        day_after = (datetime.now(timezone.utc) + timedelta(days=2)).strftime("%Y-%m-%d")
+        prices = make_prices([
+            (tomorrow, 48, 25.0, 0.2),
+            (day_after, 10, 30.0, 0.3),   # partial future day
+        ])
+        forecasts = coord._transform_forecast(prices)
+        dates = [f.date for f in forecasts]
+        assert day_after in dates
+        assert len(forecasts) == 2

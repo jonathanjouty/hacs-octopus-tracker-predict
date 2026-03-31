@@ -26,6 +26,7 @@ from .const import (
     DEFAULT_CALIBRATION_INTERVAL,
     DEFAULT_POLL_INTERVAL,
     DOMAIN,
+    MIN_TODAY_SLOTS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -291,7 +292,18 @@ class TrackerPredictCoordinator(DataUpdateCoordinator[TrackerPredictData]):
                 )
             )
 
-        # Assign ranks (by tracker_est ascending)
+        # Exclude today if it has too few slots (partial day with misleading average)
+        today_str = now.strftime("%Y-%m-%d")
+        today_slots = next(
+            (f.slot_count for f in forecasts if f.date == today_str), None
+        )
+        if today_slots is not None and today_slots < MIN_TODAY_SLOTS:
+            _LOGGER.debug(
+                "Excluding today (%s) from forecasts: %d slots < %d minimum",
+                today_str, today_slots, MIN_TODAY_SLOTS,
+            )
+            forecasts = [f for f in forecasts if f.date != today_str]
+
         return forecasts
 
     async def _async_update_data(self) -> TrackerPredictData:

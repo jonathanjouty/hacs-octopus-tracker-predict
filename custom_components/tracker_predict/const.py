@@ -78,6 +78,11 @@ TRACKER_TARIFF_URL = (
     "E-1R-{product}-{region}/standard-unit-rates/"
 )
 
+# Minimum half-hourly slots required to include "today" in forecasts.
+# A full day has 48 slots; partial days produce misleading averages
+# because late-evening slots tend to be cheap.
+MIN_TODAY_SLOTS = 48
+
 # Tracker rate clamp bounds (p/kWh)
 TRACKER_MIN_RATE = 0.0
 TRACKER_MAX_RATE = 100.0
