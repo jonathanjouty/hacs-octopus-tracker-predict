@@ -165,6 +165,14 @@ No API keys or authentication are required — both Agile Predict and the Octopu
 
 ---
 
+## A note on how this was built
+
+This integration was built almost entirely with [Claude](https://claude.ai/), Anthropic's AI assistant. The author is not a Home Assistant developer — just someone on an Octopus Tracker tariff who wanted to know which day to charge the car. It turns out that "imperfect thing that exists" beats "perfect thing that doesn't" every time.
+
+If this project is open-sourced, PRs and issues will likely also be triaged and addressed by Claude unless a kind human decides to take over as maintainer (very welcome to!).
+
+---
+
 ## License
 
 MIT

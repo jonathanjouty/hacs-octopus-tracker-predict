@@ -2,7 +2,7 @@
 
 ## Current state (March 2026)
 
-The integration is **functional but pre-release**. Core logic is implemented, unit and live API tests pass, and CI is set up. PR #1 is open for initial merge.
+The integration is **functional and tested in a real HA instance**. Core logic is implemented, unit and live API tests pass, CI is set up, and info.md/README are in place.
 
 ### What works
 
@@ -15,42 +15,31 @@ The integration is **functional but pre-release**. Core logic is implemented, un
 - 38 unit tests (calibration + coordinator + calendar)
 - 13 live API tests (Agile Predict + Octopus Energy)
 - GitHub Actions CI (unit tests on 3.13/3.14, live API tests, JSON validation)
-
-### What hasn't been tested in a real HA instance
-
-- The full integration lifecycle (install via HACS, configure, see entities)
-- Config flow UI rendering
-- DataUpdateCoordinator polling loop
-- Entity state updates and attributes in HA dashboard
-- Error recovery / stale data fallback in practice
+- Tested in a real HA instance via manual file copy — entities appear and update correctly
+- Auto recalibration not yet verified (needs ~7 days of runtime)
 
 ## Possible next steps
 
 ### High priority
 
-1. **Forecast visualisation** — HA's UI is optimised for state-change history, not future predictions. The calendar platform partially addresses this. Longer-term options to research: (a) ApexCharts Lovelace card can graph the `forecast` attribute from the Forecast sensor; (b) the `weather` platform pattern (used for multi-day weather forecasts) may be a better semantic fit than sensors. Track down prior art from integrations that expose future time-series data.
-
-2. **Test in a real Home Assistant instance** — Install via HACS custom repo, configure, verify entities appear and update correctly
-2. **Add `info.md` / README** — Required for HACS repository listing; describe what it does, how to install, screenshots
-3. **Options flow** — Allow changing calibration interval, cheap threshold percentile, forecast window after initial setup
-4. **Recalibration robustness** — Handle Octopus API outages gracefully; cache last-good calibration model to disk
+1. **Auto recalibration persistence** — `model_last_calibrated` (exposed in the forecast sensor attributes) resets on every HA restart since the calibration model lives only in memory. Persist the last-good model to `hass.data` storage or a JSON file so restarts don't force an immediate recalibration API call. Also handle Octopus API outages gracefully by falling back to cached model.
 
 ### Medium priority
 
-5. **More entity attributes** — Expose calibration model params (slope, intercept, R-squared) as diagnostic attributes
-6. **Services** — `tracker_predict.force_recalibrate` service to trigger on-demand recalibration
-7. **Unit tests for config_flow** — Currently untested; needs HA test harness or more mocking
-8. **Unit tests for __init__.py** — Test setup/unload entry lifecycle
-9. **Improve confidence levels** — Currently based on fixed thresholds; could use prediction intervals from regression
-10. **Auto recalibration persistence** — `model_last_calibrated` (exposed in the forecast sensor attributes) resets on every HA restart since the calibration model lives only in memory. Consider persisting the last-good model to `hass.data` storage or a JSON file so restarts don't force an immediate recalibration API call.
+2. **Services** — `tracker_predict.force_recalibrate` service to trigger on-demand recalibration
+3. **Configurable product codes** — UI option to override the hardcoded AGILE/SILVER product codes. Useful if Octopus changes codes or for users on different tariff variants.
+4. **Forecast visualisation** — Calendar works well for now. Longer-term: (a) ApexCharts Lovelace card can graph the `forecast` attribute; (b) the `weather` platform pattern may be a better semantic fit for multi-day forecasts.
+5. **Options flow** — Allow changing calibration interval, cheap threshold percentile, forecast window after initial setup. Only calibration interval and forecast window are candidates currently.
 
-### Lower priority
+### Someday
 
-10. **Gas tracker prediction** — Same approach could work for Octopus Tracker gas rates
-11. **Multiple region support** — Allow configuring multiple entries for different regions
-12. **Historical accuracy tracking** — Log predicted vs actual rates over time to show calibration quality
-13. **Configurable product codes** — UI option to override the hardcoded AGILE/SILVER product codes
-14. **HACS default repository submission** — Once stable, submit to the HACS default repo list
+6. **Gas tracker prediction** — Same approach could work for Octopus Tracker gas rates
+7. **Multiple region support** — Allow configuring multiple entries for different regions
+8. **Historical accuracy tracking** — Log predicted vs actual rates over time to show calibration quality
+9. **HACS default repository submission** — Once stable, submit to the HACS default repo list
+10. **Improve confidence levels** — Currently based on fixed thresholds; could use prediction intervals from regression
+11. **Unit tests for config_flow** — Currently untested; needs HA test harness or more mocking
+12. **Unit tests for __init__.py** — Test setup/unload entry lifecycle
 
 ## Testing in a real Home Assistant instance
 
