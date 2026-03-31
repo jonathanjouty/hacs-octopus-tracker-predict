@@ -10,6 +10,7 @@ from aiohttp import ClientSession
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .calibration import CalibrationModel, calibrate, default_model
@@ -28,6 +29,9 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+STORAGE_KEY = f"{DOMAIN}.calibration"
+STORAGE_VERSION = 1
 
 
 @dataclass
@@ -78,6 +82,11 @@ class TrackerPredictCoordinator(DataUpdateCoordinator[TrackerPredictData]):
         self._model: CalibrationModel = default_model()
         self._last_calibration: datetime | None = None
         self._session: ClientSession | None = None
+        self._store = Store(
+            hass,
+            STORAGE_VERSION,
+            f"{STORAGE_KEY}.{entry.entry_id}",
+        )
 
         super().__init__(
             hass,
@@ -93,28 +102,89 @@ class TrackerPredictCoordinator(DataUpdateCoordinator[TrackerPredictData]):
             self._session = async_get_clientsession(self.hass)
         return self._session
 
+    async def _async_load_cached_model(self) -> bool:
+        """Load cached calibration model from persistent storage.
+
+        Returns True if a cached model was loaded.
+        """
+        try:
+            data = await self._store.async_load()
+        except Exception:
+            _LOGGER.exception("Error loading cached calibration model")
+            return False
+
+        if not data or not isinstance(data, dict):
+            return False
+
+        try:
+            self._model = CalibrationModel(
+                slope=data["slope"],
+                intercept=data["intercept"],
+                r_squared=data["r_squared"],
+                calibrated_at=datetime.fromisoformat(data["calibrated_at"]),
+                sample_count=data["sample_count"],
+            )
+            self._last_calibration = datetime.fromisoformat(data["calibrated_at"])
+            _LOGGER.info(
+                "Loaded cached calibration model (slope=%.4f, intercept=%.4f, "
+                "calibrated_at=%s)",
+                self._model.slope,
+                self._model.intercept,
+                self._model.calibrated_at.isoformat(),
+            )
+            return True
+        except (KeyError, ValueError, TypeError):
+            _LOGGER.warning("Cached calibration data is invalid, ignoring")
+            return False
+
+    async def _async_save_model(self) -> None:
+        """Persist the current calibration model to storage."""
+        try:
+            await self._store.async_save({
+                "slope": self._model.slope,
+                "intercept": self._model.intercept,
+                "r_squared": self._model.r_squared,
+                "calibrated_at": self._model.calibrated_at.isoformat(),
+                "sample_count": self._model.sample_count,
+            })
+        except Exception:
+            _LOGGER.exception("Error saving calibration model to storage")
+
     async def _maybe_calibrate(self) -> None:
-        """Run calibration if needed."""
+        """Run calibration if needed.
+
+        On first run, loads cached model from storage. If the cached model is
+        still within the calibration interval, skips recalibration. Falls back
+        to the cached (or default) model when the API is unavailable.
+        """
         now = datetime.now(timezone.utc)
+
+        # On first run, try to load a cached model
+        if self._last_calibration is None:
+            await self._async_load_cached_model()
+
         if (
-            self._last_calibration is None
-            or (now - self._last_calibration).total_seconds()
-            > self._calibration_interval * 3600
+            self._last_calibration is not None
+            and (now - self._last_calibration).total_seconds()
+            <= self._calibration_interval * 3600
         ):
-            _LOGGER.debug("Running calibration for region %s", self._region)
-            try:
-                self._model = await calibrate(
-                    self.session,
-                    self._region,
-                    self._calibration_days,
-                    self._agile_product or None,
-                    self._tracker_product or None,
-                )
-                self._last_calibration = now
-            except Exception:
-                _LOGGER.exception("Calibration failed, keeping previous model")
-                if self._last_calibration is None:
-                    self._last_calibration = now  # Don't retry immediately
+            return
+
+        _LOGGER.debug("Running calibration for region %s", self._region)
+        try:
+            self._model = await calibrate(
+                self.session,
+                self._region,
+                self._calibration_days,
+                self._agile_product or None,
+                self._tracker_product or None,
+            )
+            self._last_calibration = now
+            await self._async_save_model()
+        except Exception:
+            _LOGGER.exception("Calibration failed, keeping previous model")
+            if self._last_calibration is None:
+                self._last_calibration = now  # Don't retry immediately
 
     async def _fetch_agile_predict(self) -> tuple[list[dict], datetime | None]:
         """Fetch forecast from Agile Predict API.

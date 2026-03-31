@@ -110,6 +110,25 @@ _calendar_mock.CalendarEvent = _FakeCalendarEvent
 _device_registry_mock = MagicMock()
 _device_registry_mock.DeviceEntryType = _FakeDeviceEntryType
 
+class _FakeStore:
+    """Stand-in for homeassistant.helpers.storage.Store."""
+
+    def __init__(self, *args, **kwargs):
+        self._data = None
+
+    async def async_load(self):
+        return self._data
+
+    async def async_save(self, data):
+        self._data = data
+
+    async def async_remove(self):
+        self._data = None
+
+
+_storage_mock = MagicMock()
+_storage_mock.Store = _FakeStore
+
 _entity_mock = MagicMock()
 _entity_mock.DeviceInfo = dict  # DeviceInfo is a TypedDict; dict is a fine stand-in
 
@@ -119,6 +138,7 @@ _MOCKED_MODULES = {
     "homeassistant.core": MagicMock(),
     "homeassistant.helpers": MagicMock(),
     "homeassistant.helpers.aiohttp_client": MagicMock(),
+    "homeassistant.helpers.storage": _storage_mock,
     "homeassistant.helpers.update_coordinator": _update_coord_mock,
     "homeassistant.helpers.entity_platform": _entity_platform_mock,
     "homeassistant.helpers.entity": _entity_mock,
