@@ -127,7 +127,6 @@ class TrackerPredictTodaySensor(
         if not forecast or not data:
             return {}
         return {
-            "confidence": forecast.confidence,
             "days_in_window": len(data.forecasts),
             "stale": data.stale,
         }

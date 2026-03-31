@@ -18,7 +18,8 @@ Forecasts are derived from [Agile Predict](https://agilepredict.com/) data and t
 ## Prerequisites
 
 - Home Assistant with [HACS](https://hacs.xyz/) installed
-- An active Octopus Tracker electricity tariff
+
+No API keys or account credentials are needed. This integration is most useful if you are on an Octopus Tracker tariff, but it has no technical dependency on one.
 
 ---
 
@@ -63,19 +64,18 @@ You will be asked to select your **DNO region** (Distribution Network Operator a
 
 Six entities are created per configured region, grouped under a single **Tracker Predict (region)** device in Settings → Devices.
 
-### `sensor.tracker_predict_{region}_today_rank`
+### `sensor.tracker_predict_today_rank_{region}`
 
 Today's rank among all forecast days. `1` means today is the cheapest day in the current forecast window.
 
 | Attribute | Description |
 |-----------|-------------|
-| `confidence` | `high` (≤2 days), `medium` (3–5 days), or `low` (6+ days) |
 | `days_in_window` | Total number of days in the forecast |
 | `stale` | `true` if the last API fetch failed and this is cached data |
 
 ---
 
-### `sensor.tracker_predict_{region}_forecast`
+### `sensor.tracker_predict_forecast_{region}`
 
 Full 14-day forecast. State is the number of days in the forecast; the data is in attributes.
 
@@ -105,7 +105,7 @@ Each entry in `forecast`:
 
 ---
 
-### `sensor.tracker_predict_{region}_cheapest_5d`
+### `sensor.tracker_predict_cheapest_5d_{region}`
 
 The date of the cheapest predicted day within the next 5 days.
 
@@ -120,13 +120,13 @@ The date of the cheapest predicted day within the next 5 days.
 
 ---
 
-### `sensor.tracker_predict_{region}_cheapest_10d`
+### `sensor.tracker_predict_cheapest_10d_{region}`
 
 Same as above but for the next 10 days.
 
 ---
 
-### `sensor.tracker_predict_{region}_forecast_generated_at`
+### `sensor.tracker_predict_forecast_generated_{region}`
 
 Timestamp showing when AgilePredict last generated the forecast. AgilePredict publishes new forecasts approximately 4 times per day; this sensor updates within an hour of each new forecast being available.
 
