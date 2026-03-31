@@ -16,14 +16,33 @@ DEFAULT_CALIBRATION_DAYS = 60
 DEFAULT_CALIBRATION_INTERVAL = 168  # 7 days in hours
 DEFAULT_CHEAP_THRESHOLD_PERCENTILE = 20
 
-# Fallback linear model (2025 East England values)
+# Fallback linear model — overall average used when region lookup fails
 DEFAULT_SLOPE = 0.56
 DEFAULT_INTERCEPT = 12.75
+
+# Per-region default calibration (slope, intercept) — populated by scripts/recalibrate.py
+# These are placeholder values; will be replaced with real data on first run.
+DEFAULT_CALIBRATION: dict[str, tuple[float, float]] = {
+    "A": (0.56, 12.75),
+    "B": (0.56, 12.75),
+    "C": (0.56, 12.75),
+    "D": (0.56, 12.75),
+    "E": (0.56, 12.75),
+    "F": (0.56, 12.75),
+    "G": (0.56, 12.75),
+    "H": (0.56, 12.75),
+    "J": (0.56, 12.75),
+    "K": (0.56, 12.75),
+    "L": (0.56, 12.75),
+    "M": (0.56, 12.75),
+    "N": (0.56, 12.75),
+    "P": (0.56, 12.75),
+}
 
 # Default product codes — Tracker is no longer listed in the Octopus products
 # API but the tariff endpoints still work with known product codes.
 DEFAULT_AGILE_PRODUCT = "AGILE-24-10-01"
-DEFAULT_TRACKER_PRODUCT = "SILVER-24-04-03"
+DEFAULT_TRACKER_PRODUCT = "SILVER-25-09-02"
 
 AGILE_PREDICT_URL = "https://agilepredict.com/api/{region}"
 AGILE_PREDICT_ALT_URL = "https://prices.fly.dev/api/{region}"

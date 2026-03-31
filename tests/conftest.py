@@ -78,6 +78,12 @@ class _FakeConfigFlow:
         pass
 
 
+class _FakeOptionsFlow:
+    """Stand-in for OptionsFlow."""
+    def __init__(self, *args, **kwargs):
+        pass
+
+
 # Build module mocks
 _update_coord_mock = MagicMock()
 _update_coord_mock.DataUpdateCoordinator = _FakeDataUpdateCoordinator
@@ -95,8 +101,10 @@ _entity_platform_mock.CoordinatorEntity = _FakeCoordinatorEntity
 _entity_platform_mock.AddEntitiesCallback = MagicMock
 
 _config_entries_mock = MagicMock()
+_config_entries_mock.ConfigEntry = MagicMock
 _config_entries_mock.ConfigFlow = _FakeConfigFlow
 _config_entries_mock.ConfigFlowResult = dict
+_config_entries_mock.OptionsFlow = _FakeOptionsFlow
 
 _vol_mock = MagicMock()
 _vol_mock.Schema = lambda x: x

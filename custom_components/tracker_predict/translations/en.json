@@ -7,8 +7,15 @@
         "data": {
           "region": "Octopus Energy region"
         }
-      },
-      "options": {
+      }
+    },
+    "abort": {
+      "already_configured": "This region is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
         "title": "Tracker Predict Options",
         "data": {
           "poll_interval_minutes": "Poll interval (minutes)",
@@ -19,9 +26,6 @@
           "tracker_product_code": "Tracker product code (leave blank for auto)"
         }
       }
-    },
-    "abort": {
-      "already_configured": "This region is already configured."
     }
   }
 }
