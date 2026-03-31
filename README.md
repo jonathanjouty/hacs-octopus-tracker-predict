@@ -61,22 +61,17 @@ You will be asked to select your **DNO region** (Distribution Network Operator a
 
 ## Entities
 
-Five entities are created per configured region.
+Six entities are created per configured region, grouped under a single **Tracker Predict (region)** device in Settings → Devices.
 
-### `sensor.tracker_predict_{region}_today`
+### `sensor.tracker_predict_{region}_today_rank`
 
-Today's predicted Tracker rate.
+Today's rank among all forecast days. `1` means today is the cheapest day in the current forecast window.
 
 | Attribute | Description |
 |-----------|-------------|
-| `tracker_estimate` | Central estimate (p/kWh) |
-| `tracker_low` | Lower bound (p/kWh) |
-| `tracker_high` | Upper bound (p/kWh) |
 | `confidence` | `high` (≤2 days), `medium` (3–5 days), or `low` (6+ days) |
-| `agile_daily_mean` | Underlying Agile mean used as model input |
-| `model_r_squared` | R² of current calibration model |
+| `days_in_window` | Total number of days in the forecast |
 | `stale` | `true` if the last API fetch failed and this is cached data |
-| `last_updated` | Timestamp of last successful fetch |
 
 ---
 
@@ -91,13 +86,14 @@ Full 14-day forecast. State is the number of days in the forecast; the data is i
 | `model_intercept` | Current regression intercept |
 | `model_r_squared` | Current R² |
 | `model_last_calibrated` | Timestamp of last recalibration |
+| `forecast_generated_at` | When AgilePredict generated this forecast |
 | `stale` | Whether forecast data is cached |
 
 Each entry in `forecast`:
 ```json
 {
   "date": "2026-04-01",
-  "day_of_week": "Wednesday",
+  "day_of_week": "Wed",
   "tracker_est": 24.3,
   "tracker_low": 21.1,
   "tracker_high": 27.5,
@@ -116,7 +112,7 @@ The date of the cheapest predicted day within the next 5 days.
 | Attribute | Description |
 |-----------|-------------|
 | `date` | Date string (YYYY-MM-DD) |
-| `day_of_week` | Day name |
+| `day_of_week` | Day abbreviation (e.g. `Wed`) |
 | `tracker_est` | Predicted rate (p/kWh) |
 | `tracker_low` / `tracker_high` | Confidence bounds |
 | `days_away` | How many days from today |
@@ -130,14 +126,22 @@ Same as above but for the next 10 days.
 
 ---
 
-### `binary_sensor.tracker_predict_{region}_cheap_today`
+### `sensor.tracker_predict_{region}_forecast_generated_at`
 
-`ON` if today's predicted rate is in the cheapest 20th percentile of the current forecast window.
+Timestamp showing when AgilePredict last generated the forecast. AgilePredict publishes new forecasts approximately 4 times per day; this sensor updates within an hour of each new forecast being available.
 
-| Attribute | Description |
-|-----------|-------------|
-| `threshold` | The p/kWh rate used as the cheap/expensive cutoff |
-| `tracker_est` | Today's predicted rate |
+---
+
+### `calendar.tracker_predict_{region}`
+
+A calendar entity showing each forecast day as an all-day event. Each event is labelled with the predicted rate and rank, e.g.:
+
+```
+Tracker: 24.3p/kWh (cheapest)
+Tracker: 31.7p/kWh (2nd cheapest)
+```
+
+Add this calendar to a Lovelace **Calendar card** to visualise the forecast at a glance. It can also be used in calendar-based automations (e.g. trigger EV charging on the cheapest day).
 
 ---
 
