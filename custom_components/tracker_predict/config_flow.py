@@ -6,7 +6,6 @@ from typing import Any
 
 import voluptuous as vol
 from homeassistant.config_entries import (
-    ConfigEntry,
     ConfigFlow,
     ConfigFlowResult,
     OptionsFlow,
@@ -36,9 +35,9 @@ class TrackerPredictConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     @staticmethod
-    def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
+    def async_get_options_flow(config_entry):
         """Return the options flow handler."""
-        return TrackerPredictOptionsFlow(config_entry)
+        return TrackerPredictOptionsFlow()
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -73,10 +72,6 @@ class TrackerPredictConfigFlow(ConfigFlow, domain=DOMAIN):
 class TrackerPredictOptionsFlow(OptionsFlow):
     """Handle options for Tracker Predict."""
 
-    def __init__(self, config_entry: ConfigEntry) -> None:
-        """Initialize options flow."""
-        self.config_entry = config_entry
-
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
@@ -95,26 +90,26 @@ class TrackerPredictOptionsFlow(OptionsFlow):
                         default=options.get(
                             CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL
                         ),
-                    ): int,
+                    ): vol.All(int, vol.Range(min=1)),
                     vol.Optional(
                         CONF_CALIBRATION_DAYS,
                         default=options.get(
                             CONF_CALIBRATION_DAYS, DEFAULT_CALIBRATION_DAYS
                         ),
-                    ): int,
+                    ): vol.All(int, vol.Range(min=1)),
                     vol.Optional(
                         CONF_CALIBRATION_INTERVAL,
                         default=options.get(
                             CONF_CALIBRATION_INTERVAL, DEFAULT_CALIBRATION_INTERVAL
                         ),
-                    ): int,
+                    ): vol.All(int, vol.Range(min=1)),
                     vol.Optional(
                         CONF_CHEAP_THRESHOLD_PERCENTILE,
                         default=options.get(
                             CONF_CHEAP_THRESHOLD_PERCENTILE,
                             DEFAULT_CHEAP_THRESHOLD_PERCENTILE,
                         ),
-                    ): int,
+                    ): vol.All(int, vol.Range(min=1, max=99)),
                     vol.Optional(
                         CONF_AGILE_PRODUCT_CODE,
                         default=options.get(CONF_AGILE_PRODUCT_CODE, ""),

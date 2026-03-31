@@ -20,8 +20,9 @@ DEFAULT_CHEAP_THRESHOLD_PERCENTILE = 20
 DEFAULT_SLOPE = 0.56
 DEFAULT_INTERCEPT = 12.75
 
-# Per-region default calibration (slope, intercept) — populated by scripts/recalibrate.py
-# These are placeholder values; will be replaced with real data on first run.
+# Per-region default calibration (slope, intercept).
+# All regions currently share the same fallback values. The quarterly
+# recalibrate.yml workflow will differentiate them with real API data.
 DEFAULT_CALIBRATION: dict[str, tuple[float, float]] = {
     "A": (0.56, 12.75),
     "B": (0.56, 12.75),

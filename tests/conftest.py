@@ -109,7 +109,10 @@ _config_entries_mock.OptionsFlow = _FakeOptionsFlow
 _vol_mock = MagicMock()
 _vol_mock.Schema = lambda x: x
 _vol_mock.Required = lambda key, **kwargs: key
+_vol_mock.Optional = lambda key, **kwargs: key
 _vol_mock.In = lambda x: x
+_vol_mock.All = lambda *args: args[-1] if args else None
+_vol_mock.Range = lambda **kwargs: int
 
 _calendar_mock = MagicMock()
 _calendar_mock.CalendarEntity = _FakeCalendarEntity

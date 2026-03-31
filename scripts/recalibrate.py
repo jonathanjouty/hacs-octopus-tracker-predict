@@ -60,18 +60,30 @@ MIN_SAMPLES = 7
 async def discover_product_code(
     session: aiohttp.ClientSession, prefix: str
 ) -> str | None:
-    """Discover the latest product code matching a prefix."""
+    """Discover the latest product code matching a prefix (with pagination)."""
+    all_results: list[dict] = []
+    url: str | None = OCTOPUS_PRODUCTS_URL
     params: dict[str, str] = {"page_size": "100"}
     if prefix == "SILVER":
         params["is_tracker"] = "true"
 
     try:
-        async with session.get(OCTOPUS_PRODUCTS_URL, params=params) as resp:
-            if resp.status != 200:
-                return None
-            data = await resp.json()
+        while url:
+            async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                if resp.status != 200:
+                    break
+                data = await resp.json()
 
-        matches = [p for p in data.get("results", []) if p.get("code", "").startswith(prefix)]
+            all_results.extend(data.get("results", []))
+
+            matches = [p for p in all_results if p.get("code", "").startswith(prefix)]
+            if matches:
+                break
+
+            url = data.get("next")
+            params = {}  # next URL already includes params
+
+        matches = [p for p in all_results if p.get("code", "").startswith(prefix)]
         if not matches:
             return None
 
@@ -102,7 +114,7 @@ async def fetch_rates(
 
     try:
         while page_url:
-            async with session.get(page_url, params=params) as resp:
+            async with session.get(page_url, params=params, timeout=aiohttp.ClientTimeout(total=30)) as resp:
                 if resp.status != 200:
                     _LOG.warning("API returned %d for %s region %s", resp.status, product_code, region)
                     break
@@ -167,8 +179,7 @@ def fit_linear_model(
 
 async def calibrate_all_regions() -> dict[str, dict]:
     """Run calibration for all regions. Returns {region: {slope, intercept, r_squared, samples}}."""
-    timeout = aiohttp.ClientTimeout(total=60)
-    async with aiohttp.ClientSession(timeout=timeout) as session:
+    async with aiohttp.ClientSession() as session:
         # Discover product codes once
         agile_product = await discover_product_code(session, "AGILE") or DEFAULT_AGILE_PRODUCT
         tracker_product = await discover_product_code(session, "SILVER") or DEFAULT_TRACKER_PRODUCT

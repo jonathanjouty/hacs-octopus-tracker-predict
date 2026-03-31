@@ -46,6 +46,7 @@ jobs:
           git commit -m "chore: recalibrate per-region defaults $(date +%Y-%m)"
           git push -u origin "$BRANCH"
           gh pr create \
+            --base main \
             --title "Recalibrate per-region defaults ($(date +%B %Y))" \
             --body "$(cat <<'EOF'
           ## Summary
