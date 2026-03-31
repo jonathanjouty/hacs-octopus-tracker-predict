@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceEntryType
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -67,13 +69,23 @@ def _ranked_forecasts(data: TrackerPredictData | None) -> list[dict]:
     return result
 
 
+def _make_device_info(region: str) -> DeviceInfo:
+    """Shared DeviceInfo for all entities in this region."""
+    return DeviceInfo(
+        identifiers={(DOMAIN, region)},
+        name=f"Tracker Predict ({region})",
+        manufacturer="Octopus Energy / Agile Predict",
+        model="Tracker Rate Predictor",
+        entry_type=DeviceEntryType.SERVICE,
+    )
+
+
 class TrackerPredictTodaySensor(
     CoordinatorEntity[TrackerPredictCoordinator], SensorEntity
 ):
-    """Sensor showing today's predicted Tracker rate."""
+    """Sensor showing today's rank among all forecast days (1 = cheapest)."""
 
-    _attr_native_unit_of_measurement = "p/kWh"
-    _attr_icon = "mdi:currency-gbp"
+    _attr_icon = "mdi:podium"
 
     def __init__(
         self,
@@ -85,13 +97,26 @@ class TrackerPredictTodaySensor(
         super().__init__(coordinator)
         self._region = region
         self._attr_unique_id = f"tracker_predict_{region}_today"
-        self._attr_name = f"Tracker Predict Today ({region})"
+        self._attr_name = f"Tracker Predict Today Rank ({region})"
 
     @property
-    def native_value(self) -> float | None:
-        """Return today's predicted rate."""
-        forecast = _get_today_forecast(self.coordinator.data)
-        return forecast.tracker_est if forecast else None
+    def device_info(self) -> DeviceInfo:
+        return _make_device_info(self._region)
+
+    @property
+    def native_value(self) -> int | None:
+        """Return today's rank (1 = cheapest day in the forecast window)."""
+        data = self.coordinator.data
+        if not data or not data.forecasts:
+            return None
+        today_forecast = _get_today_forecast(data)
+        if not today_forecast:
+            return None
+        sorted_by_price = sorted(data.forecasts, key=lambda f: f.tracker_est)
+        for rank, f in enumerate(sorted_by_price, 1):
+            if f.date == today_forecast.date:
+                return rank
+        return None
 
     @property
     def extra_state_attributes(self) -> dict:
@@ -103,12 +128,11 @@ class TrackerPredictTodaySensor(
 
         attrs = {
             "forecast_date": forecast.date,
-            "tracker_estimate": forecast.tracker_est,
+            "tracker_est": forecast.tracker_est,
             "tracker_low": forecast.tracker_low,
             "tracker_high": forecast.tracker_high,
             "confidence": forecast.confidence,
-            "agile_daily_mean": forecast.agile_daily_mean,
-            "model_r_squared": round(data.model.r_squared, 4),
+            "days_in_window": len(data.forecasts),
             "stale": data.stale,
         }
         if data.last_updated:
@@ -134,6 +158,10 @@ class TrackerPredictForecastSensor(
         self._region = region
         self._attr_unique_id = f"tracker_predict_{region}_forecast"
         self._attr_name = f"Tracker Predict Forecast ({region})"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return _make_device_info(self._region)
 
     @property
     def native_value(self) -> int | None:
@@ -181,6 +209,10 @@ class TrackerPredictCheapestSensor(
         self._window = window
         self._attr_unique_id = f"tracker_predict_{region}_cheapest_{window}d"
         self._attr_name = f"Tracker Predict Cheapest {window}d ({region})"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return _make_device_info(self._region)
 
     def _get_cheapest(self) -> DayForecast | None:
         """Find cheapest day within window."""
