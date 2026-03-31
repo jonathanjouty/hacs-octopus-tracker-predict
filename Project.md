@@ -29,7 +29,7 @@ The integration is **functional and tested in a real HA instance**. Core logic i
 
 2. **Services** — `tracker_predict.force_recalibrate` service to trigger on-demand recalibration
 3. **Configurable product codes** — UI option to override the hardcoded AGILE/SILVER product codes. Useful if Octopus changes codes or for users on different tariff variants.
-4. **Forecast visualisation** — Calendar works well for now. Longer-term: (a) ApexCharts Lovelace card can graph the `forecast` attribute; (b) the `weather` platform pattern may be a better semantic fit for multi-day forecasts.
+4. ~~**Forecast visualisation**~~ — **Done.** Dashboard examples added to README (ApexCharts bar chart, Markdown table, Calendar card). The existing `forecast` attribute format works well with third-party cards — no integration code changes needed. The `weather` platform was evaluated but rejected as a poor semantic fit (fields are temperature/precipitation, not prices).
 5. **Options flow** — Allow changing calibration interval, cheap threshold percentile, forecast window after initial setup. Only calibration interval and forecast window are candidates currently.
 
 ### Someday
