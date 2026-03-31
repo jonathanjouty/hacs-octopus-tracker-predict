@@ -11,6 +11,7 @@ from aiohttp import ClientSession
 
 from .const import (
     DEFAULT_AGILE_PRODUCT,
+    DEFAULT_CALIBRATION,
     DEFAULT_INTERCEPT,
     DEFAULT_SLOPE,
     DEFAULT_TRACKER_PRODUCT,
@@ -36,11 +37,12 @@ class CalibrationModel:
         return max(0.0, min(100.0, self.slope * agile_daily_mean + self.intercept))
 
 
-def default_model() -> CalibrationModel:
-    """Return fallback model from 2025 East England data."""
+def default_model(region: str = "A") -> CalibrationModel:
+    """Return fallback model using per-region defaults."""
+    slope, intercept = DEFAULT_CALIBRATION.get(region, (DEFAULT_SLOPE, DEFAULT_INTERCEPT))
     return CalibrationModel(
-        slope=DEFAULT_SLOPE,
-        intercept=DEFAULT_INTERCEPT,
+        slope=slope,
+        intercept=intercept,
         r_squared=0.0,
         calibrated_at=datetime.now(timezone.utc),
         sample_count=0,
@@ -126,6 +128,10 @@ async def discover_product_code(
         url: str | None = OCTOPUS_PRODUCTS_URL
         params: dict = {"page_size": "100"}
 
+        # Use is_tracker filter for Tracker (SILVER) products
+        if prefix == "SILVER":
+            params["is_tracker"] = "true"
+
         while url:
             async with session.get(url, params=params) as resp:
                 if resp.status != 200:
@@ -136,14 +142,6 @@ async def discover_product_code(
                 data = await resp.json()
 
             all_results.extend(data.get("results", []))
-
-            # Check if we already have matches — no need to paginate further
-            matches = [
-                p for p in all_results if p.get("code", "").startswith(prefix)
-            ]
-            if matches:
-                break
-
             url = data.get("next")
             params = {}  # next URL already includes params
 
@@ -244,10 +242,10 @@ async def calibrate(
             agile_product = DEFAULT_AGILE_PRODUCT
             _LOGGER.info("Using default Agile product code: %s", agile_product)
     if not tracker_product:
-        # Tracker is no longer listed in the Octopus products API,
-        # so discovery will fail. Fall back to the known default.
-        tracker_product = DEFAULT_TRACKER_PRODUCT
-        _LOGGER.info("Using default Tracker product code: %s", tracker_product)
+        tracker_product = await discover_product_code(session, "SILVER")
+        if not tracker_product:
+            tracker_product = DEFAULT_TRACKER_PRODUCT
+            _LOGGER.info("Using default Tracker product code: %s", tracker_product)
 
     if not agile_product or not tracker_product:
         _LOGGER.warning(

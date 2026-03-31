@@ -10,7 +10,7 @@ A HACS-compatible Home Assistant custom integration that predicts Octopus Tracke
 custom_components/tracker_predict/   # The HA integration
   __init__.py          # async_setup_entry / async_unload_entry
   calibration.py       # Linear regression model, Octopus API fetching, calibration pipeline
-  config_flow.py       # UI config flow (region selector)
+  config_flow.py       # UI config flow (region selector) + options flow
   const.py             # All constants, defaults, API URLs, region codes
   coordinator.py       # DataUpdateCoordinator — fetches Agile Predict, transforms to Tracker estimates
   sensor.py            # 3 sensor entities (today rate, forecast, cheapest day)
@@ -25,6 +25,9 @@ tests/
   test_coordinator.py  # Unit tests for forecast transformation logic
   test_live_api.py     # Live API tests (call real Agile Predict + Octopus APIs)
 
+scripts/
+  recalibrate.py       # Standalone script to recalibrate per-region defaults from live API data
+
 tracker-predict-spec.md  # Original spec document
 ```
 
@@ -32,8 +35,8 @@ tracker-predict-spec.md  # Original spec document
 
 - **No homeassistant dependency in tests**: `tests/conftest.py` mocks all `homeassistant.*` modules with fake base classes. This lets us run tests without installing HA.
 - **Pure Python linear regression**: No numpy/scipy — keeps `manifest.json` requirement-free for HACS.
-- **Hardcoded Tracker product code**: `SILVER-24-04-03` — Octopus delisted Tracker products from their API but the tariff endpoints still work.
-- **Default calibration model**: slope=0.56, intercept=12.75 (2025 East England data). Recalibrated automatically from historical data when possible.
+- **Tracker product discovery**: Uses `?is_tracker=true` API filter; falls back to `SILVER-25-09-02`. Configurable via options flow.
+- **Per-region default calibration**: `DEFAULT_CALIBRATION` dict in `const.py` stores slope/intercept per region. Recalibrated automatically from historical data when possible, with `scripts/recalibrate.py` for periodic updates.
 
 ## Running tests
 
@@ -49,6 +52,9 @@ GitHub Actions (`.github/workflows/ci.yml`):
 - **test**: Unit tests on Python 3.13 + 3.14
 - **live-api**: Live API tests (runs after unit tests pass)
 - **validate**: JSON syntax + Python compile checks
+
+GitHub Actions (`.github/workflows/recalibrate.yml`):
+- **recalibrate**: Quarterly scheduled job that recalibrates per-region defaults from live API data and opens a PR
 
 ## Common pitfalls
 

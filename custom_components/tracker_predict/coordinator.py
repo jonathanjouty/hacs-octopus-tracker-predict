@@ -79,7 +79,7 @@ class TrackerPredictCoordinator(DataUpdateCoordinator[TrackerPredictData]):
         self._agile_product: str | None = entry.options.get(CONF_AGILE_PRODUCT_CODE)
         self._tracker_product: str | None = entry.options.get(CONF_TRACKER_PRODUCT_CODE)
 
-        self._model: CalibrationModel = default_model()
+        self._model: CalibrationModel = default_model(self._region)
         self._last_calibration: datetime | None = None
         self._session: ClientSession | None = None
         self._store = Store(
