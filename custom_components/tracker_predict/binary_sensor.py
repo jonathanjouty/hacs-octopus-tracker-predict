@@ -7,6 +7,8 @@ import statistics
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceEntryType
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -17,7 +19,7 @@ from .const import (
     DOMAIN,
 )
 from .coordinator import TrackerPredictCoordinator
-from .sensor import _get_today_forecast
+from .sensor import _get_today_forecast, _make_device_info
 
 
 async def async_setup_entry(
@@ -55,6 +57,10 @@ class TrackerPredictCheapTodaySensor(
         )
         self._attr_unique_id = f"tracker_predict_{region}_cheap_today"
         self._attr_name = f"Tracker Predict Cheap Today ({region})"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return _make_device_info(self._region)
 
     def _compute_threshold(self) -> float | None:
         """Compute the threshold rate at the configured percentile."""

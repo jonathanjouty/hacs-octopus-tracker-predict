@@ -1,6 +1,7 @@
 """Shared test fixtures and HA module mocks for Tracker Predict tests."""
 
 import sys
+from dataclasses import dataclass, field
 from unittest.mock import MagicMock
 
 import pytest
@@ -48,6 +49,27 @@ class _FakeBinarySensorEntity(_FakeEntity):
     pass
 
 
+class _FakeCalendarEntity(_FakeEntity):
+    """Stand-in for CalendarEntity."""
+    pass
+
+
+@dataclass
+class _FakeCalendarEvent:
+    """Stand-in for CalendarEvent."""
+    start: object
+    end: object
+    summary: str
+    description: str | None = None
+    location: str | None = None
+    uid: str | None = None
+
+
+class _FakeDeviceEntryType:
+    """Stand-in for DeviceEntryType enum."""
+    SERVICE = "service"
+
+
 class _FakeConfigFlow:
     """Stand-in for ConfigFlow."""
     VERSION = 1
@@ -81,6 +103,16 @@ _vol_mock.Schema = lambda x: x
 _vol_mock.Required = lambda key, **kwargs: key
 _vol_mock.In = lambda x: x
 
+_calendar_mock = MagicMock()
+_calendar_mock.CalendarEntity = _FakeCalendarEntity
+_calendar_mock.CalendarEvent = _FakeCalendarEvent
+
+_device_registry_mock = MagicMock()
+_device_registry_mock.DeviceEntryType = _FakeDeviceEntryType
+
+_entity_mock = MagicMock()
+_entity_mock.DeviceInfo = dict  # DeviceInfo is a TypedDict; dict is a fine stand-in
+
 _MOCKED_MODULES = {
     "homeassistant": MagicMock(),
     "homeassistant.config_entries": _config_entries_mock,
@@ -89,9 +121,12 @@ _MOCKED_MODULES = {
     "homeassistant.helpers.aiohttp_client": MagicMock(),
     "homeassistant.helpers.update_coordinator": _update_coord_mock,
     "homeassistant.helpers.entity_platform": _entity_platform_mock,
+    "homeassistant.helpers.entity": _entity_mock,
+    "homeassistant.helpers.device_registry": _device_registry_mock,
     "homeassistant.components": MagicMock(),
     "homeassistant.components.sensor": _sensor_mock,
     "homeassistant.components.binary_sensor": _binary_sensor_mock,
+    "homeassistant.components.calendar": _calendar_mock,
     "voluptuous": _vol_mock,
 }
 

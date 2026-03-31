@@ -62,4 +62,4 @@ TRACKER_TARIFF_URL = (
 TRACKER_MIN_RATE = 0.0
 TRACKER_MAX_RATE = 100.0
 
-PLATFORMS = ["sensor", "binary_sensor"]
+PLATFORMS = ["sensor", "calendar"]

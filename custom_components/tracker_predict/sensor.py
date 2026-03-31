@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceEntryType
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -28,6 +30,7 @@ async def async_setup_entry(
         TrackerPredictForecastSensor(coordinator, entry, region),
         TrackerPredictCheapestSensor(coordinator, entry, region, window=5),
         TrackerPredictCheapestSensor(coordinator, entry, region, window=10),
+        TrackerPredictLastUpdatedSensor(coordinator, entry, region),
     ]
     async_add_entities(entities)
 
@@ -67,13 +70,23 @@ def _ranked_forecasts(data: TrackerPredictData | None) -> list[dict]:
     return result
 
 
+def _make_device_info(region: str) -> DeviceInfo:
+    """Shared DeviceInfo for all entities in this region."""
+    return DeviceInfo(
+        identifiers={(DOMAIN, region)},
+        name=f"Tracker Predict ({region})",
+        manufacturer="Octopus Energy / Agile Predict",
+        model="Tracker Rate Predictor",
+        entry_type=DeviceEntryType.SERVICE,
+    )
+
+
 class TrackerPredictTodaySensor(
     CoordinatorEntity[TrackerPredictCoordinator], SensorEntity
 ):
-    """Sensor showing today's predicted Tracker rate."""
+    """Sensor showing today's rank among all forecast days (1 = cheapest)."""
 
-    _attr_native_unit_of_measurement = "p/kWh"
-    _attr_icon = "mdi:currency-gbp"
+    _attr_icon = "mdi:podium"
 
     def __init__(
         self,
@@ -84,14 +97,27 @@ class TrackerPredictTodaySensor(
         """Initialize."""
         super().__init__(coordinator)
         self._region = region
-        self._attr_unique_id = f"tracker_predict_{region}_today"
-        self._attr_name = f"Tracker Predict Today ({region})"
+        self._attr_unique_id = f"tracker_predict_{region}_today_rank"
+        self._attr_name = f"Tracker Predict Today Rank ({region})"
 
     @property
-    def native_value(self) -> float | None:
-        """Return today's predicted rate."""
-        forecast = _get_today_forecast(self.coordinator.data)
-        return forecast.tracker_est if forecast else None
+    def device_info(self) -> DeviceInfo:
+        return _make_device_info(self._region)
+
+    @property
+    def native_value(self) -> int | None:
+        """Return today's rank (1 = cheapest day in the forecast window)."""
+        data = self.coordinator.data
+        if not data or not data.forecasts:
+            return None
+        today_forecast = _get_today_forecast(data)
+        if not today_forecast:
+            return None
+        sorted_by_price = sorted(data.forecasts, key=lambda f: f.tracker_est)
+        for rank, f in enumerate(sorted_by_price, 1):
+            if f.date == today_forecast.date:
+                return rank
+        return None
 
     @property
     def extra_state_attributes(self) -> dict:
@@ -100,20 +126,11 @@ class TrackerPredictTodaySensor(
         forecast = _get_today_forecast(data)
         if not forecast or not data:
             return {}
-
-        attrs = {
-            "forecast_date": forecast.date,
-            "tracker_estimate": forecast.tracker_est,
-            "tracker_low": forecast.tracker_low,
-            "tracker_high": forecast.tracker_high,
+        return {
             "confidence": forecast.confidence,
-            "agile_daily_mean": forecast.agile_daily_mean,
-            "model_r_squared": round(data.model.r_squared, 4),
+            "days_in_window": len(data.forecasts),
             "stale": data.stale,
         }
-        if data.last_updated:
-            attrs["last_updated"] = data.last_updated.isoformat()
-        return attrs
 
 
 class TrackerPredictForecastSensor(
@@ -134,6 +151,10 @@ class TrackerPredictForecastSensor(
         self._region = region
         self._attr_unique_id = f"tracker_predict_{region}_forecast"
         self._attr_name = f"Tracker Predict Forecast ({region})"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return _make_device_info(self._region)
 
     @property
     def native_value(self) -> int | None:
@@ -158,6 +179,8 @@ class TrackerPredictForecastSensor(
             "model_last_calibrated": data.model.calibrated_at.isoformat(),
             "stale": data.stale,
         }
+        if data.forecast_generated_at:
+            attrs["forecast_generated_at"] = data.forecast_generated_at.isoformat()
         return attrs
 
 
@@ -181,6 +204,10 @@ class TrackerPredictCheapestSensor(
         self._window = window
         self._attr_unique_id = f"tracker_predict_{region}_cheapest_{window}d"
         self._attr_name = f"Tracker Predict Cheapest {window}d ({region})"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return _make_device_info(self._region)
 
     def _get_cheapest(self) -> DayForecast | None:
         """Find cheapest day within window."""
@@ -222,3 +249,34 @@ class TrackerPredictCheapestSensor(
             "days_away": days_away,
             "confidence": cheapest.confidence,
         }
+
+
+class TrackerPredictLastUpdatedSensor(
+    CoordinatorEntity[TrackerPredictCoordinator], SensorEntity
+):
+    """Sensor showing when the coordinator last successfully fetched data."""
+
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_icon = "mdi:clock-outline"
+
+    def __init__(
+        self,
+        coordinator: TrackerPredictCoordinator,
+        entry: ConfigEntry,
+        region: str,
+    ) -> None:
+        """Initialize."""
+        super().__init__(coordinator)
+        self._region = region
+        self._attr_unique_id = f"tracker_predict_{region}_forecast_generated_at"
+        self._attr_name = f"Tracker Predict Forecast Generated ({region})"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return _make_device_info(self._region)
+
+    @property
+    def native_value(self):
+        """Return when AgilePredict last generated the forecast."""
+        data = self.coordinator.data
+        return data.forecast_generated_at if data else None

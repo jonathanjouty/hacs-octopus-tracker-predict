@@ -11,8 +11,8 @@ The integration is **functional but pre-release**. Core logic is implemented, un
 - Octopus historical rate fetching with pagination
 - Linear regression calibration from historical Agile vs Tracker data
 - Forecast transformation: daily means, confidence levels, clamping
-- 4 entities: today's rate, full forecast, cheapest day, cheap-today binary sensor
-- 24 unit tests (calibration + coordinator)
+- 6 entities grouped under a device: today rank, full forecast, cheapest 5d, cheapest 10d, last updated, forecast calendar
+- 38 unit tests (calibration + coordinator + calendar)
 - 13 live API tests (Agile Predict + Octopus Energy)
 - GitHub Actions CI (unit tests on 3.13/3.14, live API tests, JSON validation)
 
@@ -28,7 +28,9 @@ The integration is **functional but pre-release**. Core logic is implemented, un
 
 ### High priority
 
-1. **Test in a real Home Assistant instance** — Install via HACS custom repo, configure, verify entities appear and update correctly
+1. **Forecast visualisation** — HA's UI is optimised for state-change history, not future predictions. The calendar platform partially addresses this. Longer-term options to research: (a) ApexCharts Lovelace card can graph the `forecast` attribute from the Forecast sensor; (b) the `weather` platform pattern (used for multi-day weather forecasts) may be a better semantic fit than sensors. Track down prior art from integrations that expose future time-series data.
+
+2. **Test in a real Home Assistant instance** — Install via HACS custom repo, configure, verify entities appear and update correctly
 2. **Add `info.md` / README** — Required for HACS repository listing; describe what it does, how to install, screenshots
 3. **Options flow** — Allow changing calibration interval, cheap threshold percentile, forecast window after initial setup
 4. **Recalibration robustness** — Handle Octopus API outages gracefully; cache last-good calibration model to disk
@@ -40,6 +42,7 @@ The integration is **functional but pre-release**. Core logic is implemented, un
 7. **Unit tests for config_flow** — Currently untested; needs HA test harness or more mocking
 8. **Unit tests for __init__.py** — Test setup/unload entry lifecycle
 9. **Improve confidence levels** — Currently based on fixed thresholds; could use prediction intervals from regression
+10. **Auto recalibration persistence** — `model_last_calibrated` (exposed in the forecast sensor attributes) resets on every HA restart since the calibration model lives only in memory. Consider persisting the last-good model to `hass.data` storage or a JSON file so restarts don't force an immediate recalibration API call.
 
 ### Lower priority
 
@@ -103,11 +106,13 @@ Alternatives:
 - [ ] Integration card appears in Settings → Devices & Services
 
 **Entities:**
-- [ ] 5 entities created (today, forecast, cheapest_5d, cheapest_10d, cheap_today)
-- [ ] `sensor.*_today` has a numeric state in p/kWh and attributes: `tracker_estimate`, `tracker_low`, `tracker_high`, `confidence`, `model_r_squared`
-- [ ] `sensor.*_forecast` has a `forecast` attribute containing a list of day objects with `date`, `tracker_est`, `rank`
+- [ ] A "Tracker Predict (X)" device appears in Settings → Devices
+- [ ] 6 entities grouped under it: today rank, forecast, cheapest_5d, cheapest_10d, cheap_today, calendar
+- [ ] `sensor.*_today_rank` has an integer state (rank, 1 = cheapest) and attributes: `confidence`, `days_in_window`, `stale`
+- [ ] `sensor.*_last_updated` has a timestamp state showing last successful fetch
+- [ ] `sensor.*_forecast` has a `forecast` attribute (list of day objects with `date`, `tracker_est`, `rank`) and a `forecast_generated_at` attribute showing when AgilePredict generated the forecast
 - [ ] `sensor.*_cheapest_5d` and `*_cheapest_10d` show a future date as their state
-- [ ] `binary_sensor.*_cheap_today` shows ON or OFF
+- [ ] `calendar.*` appears in calendar card and shows all-day events with predicted rates and rank labels
 
 **Behaviour over time:**
 - [ ] Check HA logs (Settings → System → Logs → filter `tracker_predict`) for errors

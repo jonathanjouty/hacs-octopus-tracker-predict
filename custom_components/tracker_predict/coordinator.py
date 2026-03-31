@@ -51,6 +51,7 @@ class TrackerPredictData:
     forecasts: list[DayForecast] = field(default_factory=list)
     model: CalibrationModel = field(default_factory=default_model)
     last_updated: datetime | None = None
+    forecast_generated_at: datetime | None = None
     stale: bool = False
 
 
@@ -115,8 +116,11 @@ class TrackerPredictCoordinator(DataUpdateCoordinator[TrackerPredictData]):
                 if self._last_calibration is None:
                     self._last_calibration = now  # Don't retry immediately
 
-    async def _fetch_agile_predict(self) -> list[dict]:
-        """Fetch forecast from Agile Predict API."""
+    async def _fetch_agile_predict(self) -> tuple[list[dict], datetime | None]:
+        """Fetch forecast from Agile Predict API.
+
+        Returns (prices, forecast_generated_at).
+        """
         url = AGILE_PREDICT_URL.format(region=self._region)
         params = {"days": "14", "high_low": "True", "forecast_count": "1"}
 
@@ -130,7 +134,20 @@ class TrackerPredictCoordinator(DataUpdateCoordinator[TrackerPredictData]):
         if not data or not isinstance(data, list) or not data[0].get("prices"):
             raise UpdateFailed("Agile Predict API returned empty/invalid data")
 
-        return data[0]["prices"]
+        entry = data[0]
+        prices = entry["prices"]
+
+        forecast_generated_at: datetime | None = None
+        created_at_str = entry.get("created_at")
+        if created_at_str:
+            try:
+                forecast_generated_at = datetime.fromisoformat(
+                    created_at_str.replace("Z", "+00:00")
+                )
+            except ValueError:
+                pass
+
+        return prices, forecast_generated_at
 
     def _transform_forecast(self, prices: list[dict]) -> list[DayForecast]:
         """Transform half-hourly Agile predictions to daily Tracker estimates."""
@@ -211,13 +228,14 @@ class TrackerPredictCoordinator(DataUpdateCoordinator[TrackerPredictData]):
         await self._maybe_calibrate()
 
         try:
-            prices = await self._fetch_agile_predict()
+            prices, forecast_generated_at = await self._fetch_agile_predict()
             forecasts = self._transform_forecast(prices)
 
             return TrackerPredictData(
                 forecasts=forecasts,
                 model=self._model,
                 last_updated=datetime.now(timezone.utc),
+                forecast_generated_at=forecast_generated_at,
                 stale=False,
             )
         except UpdateFailed:
@@ -230,6 +248,7 @@ class TrackerPredictCoordinator(DataUpdateCoordinator[TrackerPredictData]):
                     forecasts=self.data.forecasts,
                     model=self._model,
                     last_updated=self.data.last_updated,
+                    forecast_generated_at=self.data.forecast_generated_at,
                     stale=True,
                 )
             raise
