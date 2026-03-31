@@ -25,3 +25,13 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         hass.data[DOMAIN].pop(entry.entry_id)
     return unload_ok
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Clean up persistent storage when the integration is removed."""
+    from .coordinator import STORAGE_KEY, STORAGE_VERSION
+
+    from homeassistant.helpers.storage import Store
+
+    store = Store(hass, STORAGE_VERSION, f"{STORAGE_KEY}.{entry.entry_id}")
+    await store.async_remove()

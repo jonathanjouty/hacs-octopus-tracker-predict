@@ -117,14 +117,15 @@ class TrackerPredictCoordinator(DataUpdateCoordinator[TrackerPredictData]):
             return False
 
         try:
+            calibrated_at = datetime.fromisoformat(data["calibrated_at"])
             self._model = CalibrationModel(
-                slope=data["slope"],
-                intercept=data["intercept"],
-                r_squared=data["r_squared"],
-                calibrated_at=datetime.fromisoformat(data["calibrated_at"]),
-                sample_count=data["sample_count"],
+                slope=float(data["slope"]),
+                intercept=float(data["intercept"]),
+                r_squared=float(data["r_squared"]),
+                calibrated_at=calibrated_at,
+                sample_count=int(data["sample_count"]),
             )
-            self._last_calibration = datetime.fromisoformat(data["calibrated_at"])
+            self._last_calibration = calibrated_at
             _LOGGER.info(
                 "Loaded cached calibration model (slope=%.4f, intercept=%.4f, "
                 "calibrated_at=%s)",

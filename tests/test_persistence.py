@@ -85,6 +85,40 @@ class TestLoadCachedModel:
         assert result is False
         assert coord._model.slope == 0.56  # default
 
+    async def test_returns_false_for_non_numeric_values(self):
+        store = FakeStore()
+        await store.async_save({
+            "slope": "banana",
+            "intercept": 11.0,
+            "r_squared": 0.92,
+            "calibrated_at": "2026-03-20T12:00:00+00:00",
+            "sample_count": 45,
+        })
+
+        coord = FakeCoordinator(store=store)
+        result = await coord._async_load_cached_model()
+
+        assert result is False
+        assert coord._model.slope == 0.56  # default
+
+    async def test_coerces_string_numbers(self):
+        """Values stored as strings (e.g. from manual edits) are coerced."""
+        store = FakeStore()
+        await store.async_save({
+            "slope": "0.60",
+            "intercept": "11.0",
+            "r_squared": "0.92",
+            "calibrated_at": "2026-03-20T12:00:00+00:00",
+            "sample_count": "45",
+        })
+
+        coord = FakeCoordinator(store=store)
+        result = await coord._async_load_cached_model()
+
+        assert result is True
+        assert coord._model.slope == 0.60
+        assert coord._model.sample_count == 45
+
     async def test_returns_false_for_non_dict_data(self):
         store = FakeStore()
         await store.async_save("not a dict")
