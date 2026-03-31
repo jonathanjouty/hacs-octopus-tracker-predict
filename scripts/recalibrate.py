@@ -75,11 +75,6 @@ async def discover_product_code(
                 data = await resp.json()
 
             all_results.extend(data.get("results", []))
-
-            matches = [p for p in all_results if p.get("code", "").startswith(prefix)]
-            if matches:
-                break
-
             url = data.get("next")
             params = {}  # next URL already includes params
 
