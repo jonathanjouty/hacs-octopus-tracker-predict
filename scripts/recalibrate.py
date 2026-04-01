@@ -68,7 +68,7 @@ CALIBRATION_DAYS = 90
 MIN_SAMPLES = 7
 
 
-# ── API helpers ──────────────────────────────────────────────────────────
+# ── API helpers ──────────────────────────────────────────────────────────────────
 
 
 async def discover_product_code(
@@ -217,7 +217,7 @@ def fit_linear_model(
     return (slope, intercept, r_squared, n)
 
 
-# ── Main calibration logic ───────────────────────────────────────────────
+# ── Main calibration logic ───────────────────────────────────────────────────────────
 
 
 async def calibrate_all_regions() -> dict[str, dict]:
@@ -258,21 +258,34 @@ async def calibrate_all_regions() -> dict[str, dict]:
                 continue
 
             slope, intercept, r_squared, samples = fit
+
+            # Compute residual summary statistics
+            residuals = [ty - (slope * ax + intercept) for ax, ty in zip(agile_vals, tracker_vals)]
+            abs_residuals = [abs(r) for r in residuals]
+            mae = round(statistics.mean(abs_residuals), 4)
+            rmse = round((sum(r**2 for r in residuals) / len(residuals)) ** 0.5, 4)
+            std_res = round(statistics.stdev(residuals), 4) if len(residuals) > 1 else 0.0
+            max_abs_res = round(max(abs_residuals), 4)
+
             results[region] = {
                 "slope": round(slope, 4),
                 "intercept": round(intercept, 2),
                 "r_squared": round(r_squared, 4),
                 "samples": samples,
+                "mae": mae,
+                "rmse": rmse,
+                "std_residual": std_res,
+                "max_abs_residual": max_abs_res,
             }
             _LOG.info(
-                "  Region %s: slope=%.4f, intercept=%.2f, R²=%.4f, samples=%d",
-                region, slope, intercept, r_squared, samples,
+                "  Region %s: slope=%.4f, intercept=%.2f, R²=%.4f, samples=%d, MAE=%.4f, RMSE=%.4f",
+                region, slope, intercept, r_squared, samples, mae, rmse,
             )
 
     return results
 
 
-# ── const.py updater ─────────────────────────────────────────────────────
+# ── const.py updater ─────────────────────────────────────────────────────────────────
 
 
 def update_const_file(results: dict[str, dict], const_path: Path) -> None:
@@ -283,7 +296,7 @@ def update_const_file(results: dict[str, dict], const_path: Path) -> None:
     lines = ["DEFAULT_CALIBRATION: dict[str, tuple[float, float]] = {"]
     for region in sorted(results, key=lambda r: list(REGIONS.keys()).index(r)):
         data = results[region]
-        lines.append(f'    "{region}": ({data["slope"]}, {data["intercept"]}),')
+        lines.append(f'    "{region}": ({data["slope"]}, {data["intercept"]}),')  # noqa: E501
     lines.append("}")
     new_dict = "\n".join(lines)
 
@@ -316,7 +329,46 @@ def update_const_file(results: dict[str, dict], const_path: Path) -> None:
     _LOG.info("Updated %s with calibration for %d regions", const_path, len(results))
 
 
-# ── Entry point ──────────────────────────────────────────────────────────
+def update_history_file(results: dict[str, dict], history_path: Path) -> None:
+    """Append calibration results with residual stats and drift deltas to a JSON history file."""
+    history: list[dict] = []
+    if history_path.exists():
+        try:
+            history = json.loads(history_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            _LOG.warning("Could not read %s, starting fresh", history_path)
+            history = []
+
+    # Compute drift deltas vs previous entry
+    prev_regions: dict[str, dict] = {}
+    if history:
+        prev_regions = history[-1].get("regions", {})
+
+    regions_entry: dict[str, dict] = {}
+    for region, data in results.items():
+        entry = {k: data[k] for k in (
+            "slope", "intercept", "r_squared", "samples",
+            "mae", "rmse", "std_residual", "max_abs_residual",
+        )}
+        prev = prev_regions.get(region)
+        if prev is not None:
+            entry["slope_delta"] = round(data["slope"] - prev["slope"], 4)
+            entry["intercept_delta"] = round(data["intercept"] - prev["intercept"], 4)
+        else:
+            entry["slope_delta"] = None
+            entry["intercept_delta"] = None
+        regions_entry[region] = entry
+
+    history.append({
+        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "regions": regions_entry,
+    })
+
+    history_path.write_text(json.dumps(history, indent=2) + "\n")
+    _LOG.info("Updated history file %s (%d entries)", history_path, len(history))
+
+
+# ── Entry point ──────────────────────────────────────────────────────────────────
 
 
 def main() -> None:
@@ -340,6 +392,8 @@ def main() -> None:
             _LOG.error("const.py not found at %s", const_path)
             sys.exit(1)
         update_const_file(results, const_path)
+        history_path = Path(__file__).resolve().parent.parent / "calibration_history.json"
+        update_history_file(results, history_path)
     else:
         print(json.dumps(results, indent=2))
 
