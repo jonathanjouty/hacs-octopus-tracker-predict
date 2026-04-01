@@ -149,37 +149,47 @@ Add this calendar to a Lovelace **Calendar card** to visualise the forecast at a
 
 The forecast data is already exposed in a format that works well with popular Lovelace cards. Below are copy-paste examples — replace `_a` with your region code (e.g. `_c` for London, `_p` for Yorkshire).
 
-### Bar chart with ApexCharts card
+### Chart with ApexCharts card
 
 Requires [apexcharts-card](https://github.com/RomRider/apexcharts-card) (install via HACS → Frontend).
 
-Shows estimated daily rates as bars with low/high range, colour-coded by rank:
+Shows estimated daily rates as bars with dashed low/high lines:
 
 ```yaml
 type: custom:apexcharts-card
 header:
   title: Tracker Forecast
   show: true
+  show_states: true
+  colorize_states: true
 series:
   - entity: sensor.tracker_predict_forecast_a
-    name: Estimated Rate (p/kWh)
+    name: Estimated
     type: column
     data_generator: |
-      return entity.attributes.forecast.map((item) => ({
-        x: item.date + ' (' + item.day_of_week + ')',
-        y: item.tracker_est,
-        fillColor: item.rank <= 3 ? '#4CAF50' : item.rank <= 7 ? '#FF9800' : '#F44336',
-      }));
+      return entity.attributes.forecast.map((item) => [
+        new Date(item.date).getTime(), item.tracker_est
+      ]);
   - entity: sensor.tracker_predict_forecast_a
-    name: Range
-    type: rangeArea
+    name: High
+    type: line
+    curve: stepline
+    stroke_width: 1
+    opacity: 0.5
     data_generator: |
-      return entity.attributes.forecast.map((item) => ({
-        x: item.date + ' (' + item.day_of_week + ')',
-        y: [item.tracker_low, item.tracker_high],
-      }));
-    opacity: 0.15
-    color: '#666666'
+      return entity.attributes.forecast.map((item) => [
+        new Date(item.date).getTime(), item.tracker_high
+      ]);
+  - entity: sensor.tracker_predict_forecast_a
+    name: Low
+    type: line
+    curve: stepline
+    stroke_width: 1
+    opacity: 0.5
+    data_generator: |
+      return entity.attributes.forecast.map((item) => [
+        new Date(item.date).getTime(), item.tracker_low
+      ]);
 ```
 
 ### Forecast table with Markdown card
@@ -189,7 +199,7 @@ No extra cards needed — uses the built-in Markdown card with Jinja2 templates:
 ```yaml
 type: markdown
 title: Tracker Forecast
-content: >
+content: |
   | Date | Day | Est (p/kWh) | Range | Rank | Confidence |
   |------|-----|-------------|-------|------|------------|
   {%- for item in state_attr('sensor.tracker_predict_forecast_a', 'forecast') %}
