@@ -145,6 +145,102 @@ Add this calendar to a Lovelace **Calendar card** to visualise the forecast at a
 
 ---
 
+## Dashboard Examples
+
+The forecast data is already exposed in a format that works well with popular Lovelace cards. Below are copy-paste examples — replace `_a` with your region code (e.g. `_c` for London, `_p` for Yorkshire).
+
+### Chart with ApexCharts card
+
+Requires [apexcharts-card](https://github.com/RomRider/apexcharts-card) (install via HACS → Frontend).
+
+Shows estimated daily rates with a shaded confidence band (uses an area masking
+trick — the card doesn't support native range area charts):
+
+```yaml
+type: custom:apexcharts-card
+graph_span: 14d
+span:
+  start: day
+header:
+  title: Tracker Forecast
+  show: true
+apex_config:
+  xaxis:
+    labels:
+      format: ddd dd MMM
+  yaxis:
+    - forceNiceScale: true
+series:
+  - entity: sensor.tracker_predict_forecast_a
+    name: High
+    type: area
+    color: DF19FF
+    opacity: 0.2
+    stroke_width: 1
+    data_generator: |
+      return entity.attributes.forecast.map((item) => [
+        new Date(item.date).getTime(), item.tracker_high
+      ]);
+  - entity: sensor.tracker_predict_forecast_a
+    name: Low
+    type: area
+    color: white
+    opacity: 1
+    stroke_width: 0
+    data_generator: |
+      return entity.attributes.forecast.map((item) => [
+        new Date(item.date).getTime(), item.tracker_low
+      ]);
+  - entity: sensor.tracker_predict_forecast_a
+    name: Low
+    type: line
+    color: DF19FF
+    stroke_width: 1
+    data_generator: |
+      return entity.attributes.forecast.map((item) => [
+        new Date(item.date).getTime(), item.tracker_low
+      ]);
+  - entity: sensor.tracker_predict_forecast_a
+    name: Predicted
+    type: line
+    color: "524155"
+    stroke_width: 3
+    data_generator: |
+      return entity.attributes.forecast.map((item) => [
+        new Date(item.date).getTime(), item.tracker_est
+      ]);
+```
+
+### Forecast table with Markdown card
+
+No extra cards needed — uses the built-in Markdown card with Jinja2 templates:
+
+```yaml
+type: markdown
+title: Tracker Forecast
+content: |
+  | Date | Day | Est (p/kWh) | Range | Rank | Confidence |
+  |------|-----|-------------|-------|------|------------|
+  {%- for item in state_attr('sensor.tracker_predict_forecast_a', 'forecast') %}
+  | {{ item.date }} | {{ item.day_of_week }} | **{{ "%.1f"|format(item.tracker_est) }}** | {{ "%.1f"|format(item.tracker_low) }}–{{ "%.1f"|format(item.tracker_high) }} | {{ item.rank }} | {{ item.confidence }} |
+  {%- endfor %}
+```
+
+### Calendar card
+
+The built-in Calendar card works with the integration's calendar entity:
+
+```yaml
+type: calendar
+entities:
+  - calendar.tracker_predict_a
+initial_view: listWeek
+```
+
+This shows each forecast day as an all-day event labelled with the predicted rate and rank.
+
+---
+
 ## How it works
 
 1. **Fetch**: Polls [Agile Predict](https://agilepredict.com/) hourly for half-hourly price forecasts for your region
@@ -161,7 +257,7 @@ No API keys or authentication are required — both Agile Predict and the Octopu
 - **Forecast accuracy degrades beyond ~5 days** — confidence is marked `low` for days 6+
 - **Hardcoded Tracker product code**: Uses `SILVER-24-04-03`. If Octopus changes this code, calibration will silently fall back to the default model until manually updated
 - **Default model is East England 2025 data**: On first install (before calibration completes), predictions use slope=0.56 / intercept=12.75 — reasonable for most UK regions but may be slightly off
-- **Calibration resets on HA restart**: The model is recalibrated on startup; there is no persistence between restarts
+- **Calibration model may be stale after long outage**: The model is persisted to HA storage and survives restarts, but if the Octopus API is unreachable for extended periods the cached model may drift
 
 ---
 
