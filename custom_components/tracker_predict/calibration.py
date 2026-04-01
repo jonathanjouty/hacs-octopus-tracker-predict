@@ -15,6 +15,7 @@ from .const import (
     DEFAULT_INTERCEPT,
     DEFAULT_SLOPE,
     DEFAULT_TRACKER_PRODUCT,
+    KNOWN_TRACKER_PRODUCTS,
     OCTOPUS_API_BASE,
     OCTOPUS_PRODUCTS_URL,
 )
@@ -120,17 +121,18 @@ async def discover_product_code(
 ) -> str | None:
     """Discover the latest product code matching a prefix (e.g. 'AGILE' or 'SILVER').
 
-    Searches the Octopus products API for the most recent matching product.
-    Paginates through results since the product listing can span multiple pages.
+    For SILVER (Tracker) products, probes KNOWN_TRACKER_PRODUCTS directly
+    because Octopus deliberately excludes Tracker products from the listing API.
+
+    For other prefixes, searches the Octopus products listing API.
     """
+    if prefix == "SILVER":
+        return await _discover_tracker_product_code(session)
+
     try:
         all_results: list[dict] = []
         url: str | None = OCTOPUS_PRODUCTS_URL
         params: dict = {"page_size": "100"}
-
-        # Use is_tracker filter for Tracker (SILVER) products
-        if prefix == "SILVER":
-            params["is_tracker"] = "true"
 
         while url:
             async with session.get(url, params=params) as resp:
@@ -164,6 +166,42 @@ async def discover_product_code(
     except Exception:
         _LOGGER.exception("Error discovering product code for prefix '%s'", prefix)
         return None
+
+
+async def _discover_tracker_product_code(session: ClientSession) -> str | None:
+    """Find the active Tracker product by probing KNOWN_TRACKER_PRODUCTS directly.
+
+    Iterates newest-first and returns the first code whose available_to is null
+    (i.e. still active). If none are active (a newer product exists beyond our
+    list), returns the newest code that at least responds with HTTP 200 so
+    calibration can still use recent historical data.
+    """
+    first_existing: str | None = None
+    for code in KNOWN_TRACKER_PRODUCTS:
+        try:
+            url = f"{OCTOPUS_API_BASE}/products/{code}/"
+            async with session.get(url) as resp:
+                if resp.status != 200:
+                    continue
+                data = await resp.json()
+            if first_existing is None:
+                first_existing = code
+            if data.get("available_to") is None:
+                _LOGGER.info("Discovered active Tracker product: %s", code)
+                return code
+        except Exception:
+            _LOGGER.debug(
+                "Error probing Tracker product %s", code, exc_info=True
+            )
+
+    if first_existing:
+        _LOGGER.warning(
+            "No Tracker product in KNOWN_TRACKER_PRODUCTS has available_to=null. "
+            "A newer product code may exist — update KNOWN_TRACKER_PRODUCTS in const.py. "
+            "Using most recent known code: %s",
+            first_existing,
+        )
+    return first_existing
 
 
 async def fetch_octopus_rates(
