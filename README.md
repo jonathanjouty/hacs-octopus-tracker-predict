@@ -153,7 +153,7 @@ The forecast data is already exposed in a format that works well with popular Lo
 
 Requires [apexcharts-card](https://github.com/RomRider/apexcharts-card) (install via HACS → Frontend).
 
-Shows estimated daily rates as bars with dashed low/high lines:
+Shows estimated daily rates with a shaded confidence band:
 
 ```yaml
 type: custom:apexcharts-card
@@ -163,35 +163,42 @@ span:
 header:
   title: Tracker Forecast
   show: true
-  show_states: true
-  colorize_states: true
+apex_config:
+  xaxis:
+    labels:
+      format: ddd dd MMM
+  yaxis:
+    - min: ~
+      forceNiceScale: true
 series:
   - entity: sensor.tracker_predict_forecast_a
-    name: Estimated
-    type: column
-    data_generator: |
-      return entity.attributes.forecast.map((item) => [
-        new Date(item.date).getTime(), item.tracker_est
-      ]);
-  - entity: sensor.tracker_predict_forecast_a
     name: High
-    type: line
-    curve: stepline
+    type: area
+    color: FF5252
+    opacity: 0.2
     stroke_width: 1
-    opacity: 0.5
     data_generator: |
       return entity.attributes.forecast.map((item) => [
         new Date(item.date).getTime(), item.tracker_high
       ]);
   - entity: sensor.tracker_predict_forecast_a
     name: Low
-    type: line
-    curve: stepline
+    type: area
+    color: var(--card-background-color, #1c1c1c)
+    opacity: 1
     stroke_width: 1
-    opacity: 0.5
     data_generator: |
       return entity.attributes.forecast.map((item) => [
         new Date(item.date).getTime(), item.tracker_low
+      ]);
+  - entity: sensor.tracker_predict_forecast_a
+    name: Predicted
+    type: line
+    color: white
+    stroke_width: 3
+    data_generator: |
+      return entity.attributes.forecast.map((item) => [
+        new Date(item.date).getTime(), item.tracker_est
       ]);
 ```
 
