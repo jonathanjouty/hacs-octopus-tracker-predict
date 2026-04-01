@@ -1,3 +1,6 @@
+> [!WARNING]
+> **This integration is in beta.** Predictions may be inaccurate. Feedback and bug reports are very welcome — please [open an issue](https://github.com/jonathanjouty/hacs-octopus-tracker-predict/issues).
+
 # Tracker Predict
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
