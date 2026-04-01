@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from aiohttp import ClientSession
 from homeassistant.config_entries import ConfigEntry
@@ -37,6 +38,7 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+_UK_TZ = ZoneInfo("Europe/London")
 
 STORAGE_KEY = f"{DOMAIN}.calibration"
 STORAGE_VERSION = 1
@@ -247,7 +249,7 @@ class TrackerPredictCoordinator(DataUpdateCoordinator[TrackerPredictData]):
             date_str = dt_str[:10]
             daily.setdefault(date_str, []).append(slot)
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(_UK_TZ)
         forecasts: list[DayForecast] = []
 
         for date_str in sorted(daily):
@@ -344,7 +346,11 @@ class TrackerPredictCoordinator(DataUpdateCoordinator[TrackerPredictData]):
             value = rate.get("value_inc_vat")
             if not valid_from or value is None:
                 continue
-            date_str = valid_from[:10]
+            try:
+                dt = datetime.fromisoformat(valid_from.replace("Z", "+00:00"))
+                date_str = dt.astimezone(_UK_TZ).strftime("%Y-%m-%d")
+            except ValueError:
+                continue
             if date_str not in daily:
                 daily[date_str] = float(value)
         return daily
@@ -363,7 +369,7 @@ class TrackerPredictCoordinator(DataUpdateCoordinator[TrackerPredictData]):
         if not actual_rates:
             return forecasts
 
-        today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        today_str = datetime.now(_UK_TZ).strftime("%Y-%m-%d")
         forecast_dates = {f.date for f in forecasts}
 
         # Replace predictions with actuals for existing forecast dates
