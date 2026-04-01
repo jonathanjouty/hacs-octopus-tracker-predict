@@ -1,7 +1,6 @@
 """Tests for the coordinator transformation logic."""
 
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch
 
 import pytest
 
