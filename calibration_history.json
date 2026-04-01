@@ -1,0 +1,175 @@
+[
+  {
+    "date": "2026-04-01",
+    "regions": {
+      "A": {
+        "slope": 0.557,
+        "intercept": 14.12,
+        "r_squared": 0.8504,
+        "samples": 90,
+        "mae": 0.5012,
+        "rmse": 1.0541,
+        "std_residual": 1.06,
+        "max_abs_residual": 7.1722,
+        "slope_delta": null,
+        "intercept_delta": null
+      },
+      "B": {
+        "slope": 0.5719,
+        "intercept": 13.14,
+        "r_squared": 0.8497,
+        "samples": 90,
+        "mae": 0.4913,
+        "rmse": 1.0332,
+        "std_residual": 1.039,
+        "max_abs_residual": 7.0161,
+        "slope_delta": null,
+        "intercept_delta": null
+      },
+      "C": {
+        "slope": 0.5863,
+        "intercept": 13.24,
+        "r_squared": 0.8506,
+        "samples": 90,
+        "mae": 0.5018,
+        "rmse": 1.0556,
+        "std_residual": 1.0615,
+        "max_abs_residual": 7.1877,
+        "slope_delta": null,
+        "intercept_delta": null
+      },
+      "D": {
+        "slope": 0.5399,
+        "intercept": 15.16,
+        "r_squared": 0.8509,
+        "samples": 90,
+        "mae": 0.5083,
+        "rmse": 1.0683,
+        "std_residual": 1.0743,
+        "max_abs_residual": 7.2753,
+        "slope_delta": null,
+        "intercept_delta": null
+      },
+      "E": {
+        "slope": 0.5492,
+        "intercept": 13.3,
+        "r_squared": 0.8499,
+        "samples": 90,
+        "mae": 0.4948,
+        "rmse": 1.0414,
+        "std_residual": 1.0472,
+        "max_abs_residual": 7.0748,
+        "slope_delta": null,
+        "intercept_delta": null
+      },
+      "F": {
+        "slope": 0.5401,
+        "intercept": 13.43,
+        "r_squared": 0.8494,
+        "samples": 90,
+        "mae": 0.4869,
+        "rmse": 1.0258,
+        "std_residual": 1.0315,
+        "max_abs_residual": 6.9543,
+        "slope_delta": null,
+        "intercept_delta": null
+      },
+      "G": {
+        "slope": 0.5494,
+        "intercept": 14.66,
+        "r_squared": 0.85,
+        "samples": 90,
+        "mae": 0.495,
+        "rmse": 1.041,
+        "std_residual": 1.0469,
+        "max_abs_residual": 7.0724,
+        "slope_delta": null,
+        "intercept_delta": null
+      },
+      "H": {
+        "slope": 0.5484,
+        "intercept": 14.19,
+        "r_squared": 0.85,
+        "samples": 90,
+        "mae": 0.4938,
+        "rmse": 1.0392,
+        "std_residual": 1.0451,
+        "max_abs_residual": 7.0558,
+        "slope_delta": null,
+        "intercept_delta": null
+      },
+      "J": {
+        "slope": 0.5254,
+        "intercept": 14.62,
+        "r_squared": 0.8502,
+        "samples": 90,
+        "mae": 0.4955,
+        "rmse": 1.0426,
+        "std_residual": 1.0484,
+        "max_abs_residual": 7.081,
+        "slope_delta": null,
+        "intercept_delta": null
+      },
+      "K": {
+        "slope": 0.518,
+        "intercept": 14.44,
+        "r_squared": 0.8493,
+        "samples": 90,
+        "mae": 0.4898,
+        "rmse": 1.0312,
+        "std_residual": 1.037,
+        "max_abs_residual": 6.9922,
+        "slope_delta": null,
+        "intercept_delta": null
+      },
+      "L": {
+        "slope": 0.4898,
+        "intercept": 14.78,
+        "r_squared": 0.8491,
+        "samples": 90,
+        "mae": 0.4848,
+        "rmse": 1.0202,
+        "std_residual": 1.0259,
+        "max_abs_residual": 6.9069,
+        "slope_delta": null,
+        "intercept_delta": null
+      },
+      "M": {
+        "slope": 0.5877,
+        "intercept": 12.78,
+        "r_squared": 0.8507,
+        "samples": 90,
+        "mae": 0.5024,
+        "rmse": 1.0576,
+        "std_residual": 1.0636,
+        "max_abs_residual": 7.2058,
+        "slope_delta": null,
+        "intercept_delta": null
+      },
+      "N": {
+        "slope": 0.5546,
+        "intercept": 13.48,
+        "r_squared": 0.8503,
+        "samples": 90,
+        "mae": 0.499,
+        "rmse": 1.0497,
+        "std_residual": 1.0555,
+        "max_abs_residual": 7.1342,
+        "slope_delta": null,
+        "intercept_delta": null
+      },
+      "P": {
+        "slope": 0.4728,
+        "intercept": 15.34,
+        "r_squared": 0.8493,
+        "samples": 90,
+        "mae": 0.4879,
+        "rmse": 1.0268,
+        "std_residual": 1.0326,
+        "max_abs_residual": 6.9551,
+        "slope_delta": null,
+        "intercept_delta": null
+      }
+    }
+  }
+]
