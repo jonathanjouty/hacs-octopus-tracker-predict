@@ -42,12 +42,19 @@ def _rank_label(rank: int, total: int) -> str:
 def _build_event(forecast: DayForecast, rank: int, total: int) -> CalendarEvent:
     """Build a CalendarEvent for a forecast day."""
     day = date.fromisoformat(forecast.date)
-    summary = f"Tracker: {forecast.tracker_est:.1f}p/kWh ({_rank_label(rank, total)})"
-    description = (
-        f"Range: {forecast.tracker_low:.1f}–{forecast.tracker_high:.1f}p/kWh\n"
-        f"Confidence: {forecast.confidence}\n"
-        f"Rank: {rank} of {total}"
-    )
+    if forecast.confidence == "actual":
+        summary = f"Tracker: {forecast.tracker_est:.1f}p/kWh (actual, {_rank_label(rank, total)})"
+        description = (
+            f"Rate: {forecast.tracker_est:.1f}p/kWh (actual)\n"
+            f"Rank: {rank} of {total}"
+        )
+    else:
+        summary = f"Tracker: {forecast.tracker_est:.1f}p/kWh ({_rank_label(rank, total)})"
+        description = (
+            f"Range: {forecast.tracker_low:.1f}–{forecast.tracker_high:.1f}p/kWh\n"
+            f"Confidence: {forecast.confidence}\n"
+            f"Rank: {rank} of {total}"
+        )
     return CalendarEvent(start=day, end=day, summary=summary, description=description)
 
 

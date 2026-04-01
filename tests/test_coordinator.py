@@ -1,6 +1,7 @@
 """Tests for the coordinator transformation logic."""
 
 from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -46,6 +47,7 @@ class FakeCoordinator:
         self._model = model or make_model()
 
     _transform_forecast = TrackerPredictCoordinator._transform_forecast
+    _overlay_actual_rates = TrackerPredictCoordinator._overlay_actual_rates
 
 
 class TestTransformForecast:
@@ -222,3 +224,180 @@ class TestPartialTodayFiltering:
         dates = [f.date for f in forecasts]
         assert day_after in dates
         assert len(forecasts) == 2
+
+
+class TestOverlayActualRates:
+    """Tests for overlaying actual Tracker rates onto forecasts."""
+
+    def _today_str(self):
+        return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    def _tomorrow_str(self):
+        return (datetime.now(timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%d")
+
+    def _yesterday_str(self):
+        return (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+
+    def _make_forecast(self, date_str, est=20.0, confidence="high"):
+        return DayForecast(
+            date=date_str, tracker_est=est, tracker_low=est - 2,
+            tracker_high=est + 2, confidence=confidence,
+            day_of_week="Mon", agile_daily_mean=15.0, slot_count=48,
+        )
+
+    def test_actual_replaces_prediction(self):
+        """Actual rate overwrites predicted values and sets confidence='actual'."""
+        coord = FakeCoordinator()
+        today = self._today_str()
+        forecasts = [self._make_forecast(today, est=20.0)]
+        actual_rates = {today: 24.5}
+
+        result = coord._overlay_actual_rates(forecasts, actual_rates)
+        assert len(result) == 1
+        assert result[0].tracker_est == 24.5
+        assert result[0].tracker_low == 24.5
+        assert result[0].tracker_high == 24.5
+        assert result[0].confidence == "actual"
+
+    def test_actual_inserts_filtered_today(self):
+        """Today excluded by MIN_TODAY_SLOTS is re-inserted with actual rate."""
+        coord = FakeCoordinator()
+        today = self._today_str()
+        tomorrow = self._tomorrow_str()
+        # Forecasts only have tomorrow (today was filtered out)
+        forecasts = [self._make_forecast(tomorrow, est=22.0)]
+        actual_rates = {today: 19.8}
+
+        result = coord._overlay_actual_rates(forecasts, actual_rates)
+        dates = [f.date for f in result]
+        assert today in dates
+        assert len(result) == 2
+        today_forecast = next(f for f in result if f.date == today)
+        assert today_forecast.tracker_est == 19.8
+        assert today_forecast.confidence == "actual"
+        assert today_forecast.slot_count == 0  # inserted, not from Agile Predict
+
+    def test_actual_tomorrow(self):
+        """Tomorrow's actual rate replaces its prediction."""
+        coord = FakeCoordinator()
+        tomorrow = self._tomorrow_str()
+        forecasts = [self._make_forecast(tomorrow, est=25.0)]
+        actual_rates = {tomorrow: 21.3}
+
+        result = coord._overlay_actual_rates(forecasts, actual_rates)
+        assert result[0].tracker_est == 21.3
+        assert result[0].confidence == "actual"
+
+    def test_actual_ignores_past_dates(self):
+        """Yesterday's rate from API is not inserted."""
+        coord = FakeCoordinator()
+        yesterday = self._yesterday_str()
+        today = self._today_str()
+        forecasts = [self._make_forecast(today, est=20.0)]
+        actual_rates = {yesterday: 18.0, today: 22.0}
+
+        result = coord._overlay_actual_rates(forecasts, actual_rates)
+        dates = [f.date for f in result]
+        assert yesterday not in dates
+        assert len(result) == 1
+
+    def test_actual_empty_no_change(self):
+        """Empty actual rates dict leaves forecasts unchanged."""
+        coord = FakeCoordinator()
+        today = self._today_str()
+        forecasts = [self._make_forecast(today, est=20.0)]
+
+        result = coord._overlay_actual_rates(forecasts, {})
+        assert len(result) == 1
+        assert result[0].tracker_est == 20.0
+        assert result[0].confidence == "high"
+
+    def test_overlay_preserves_sort_order(self):
+        """Output is sorted by date after overlay."""
+        coord = FakeCoordinator()
+        today = self._today_str()
+        tomorrow = self._tomorrow_str()
+        day_after = (datetime.now(timezone.utc) + timedelta(days=2)).strftime("%Y-%m-%d")
+        # Forecasts have tomorrow and day_after, today was filtered
+        forecasts = [
+            self._make_forecast(day_after, est=30.0),
+            self._make_forecast(tomorrow, est=25.0),
+        ]
+        actual_rates = {today: 19.0}
+
+        result = coord._overlay_actual_rates(forecasts, actual_rates)
+        dates = [f.date for f in result]
+        assert dates == sorted(dates)
+
+
+class FakeCoordinatorForFetch:
+    """Stand-in with attributes needed by _fetch_actual_tracker_rates."""
+
+    def __init__(self, tracker_product=None, resolved_product=None):
+        self._tracker_product = tracker_product
+        self._resolved_tracker_product = resolved_product
+        self._region = "A"
+        self.session = AsyncMock()
+
+    _fetch_actual_tracker_rates = TrackerPredictCoordinator._fetch_actual_tracker_rates
+
+
+class TestFetchActualTrackerRates:
+    """Tests for _fetch_actual_tracker_rates parsing logic."""
+
+    async def test_happy_path_parses_rates(self):
+        """Rates are parsed into a date→value dict, first value per date wins."""
+        coord = FakeCoordinatorForFetch(tracker_product="SILVER-25-09-02")
+        mock_rates = [
+            {"valid_from": "2026-04-01T00:00:00Z", "value_inc_vat": 24.5},
+            {"valid_from": "2026-04-01T12:00:00Z", "value_inc_vat": 25.0},
+            {"valid_from": "2026-03-31T00:00:00Z", "value_inc_vat": 22.1},
+        ]
+        with patch(
+            "custom_components.tracker_predict.coordinator.fetch_octopus_rates",
+            new_callable=AsyncMock,
+            return_value=mock_rates,
+        ):
+            result = await coord._fetch_actual_tracker_rates()
+        assert result == {"2026-04-01": 24.5, "2026-03-31": 22.1}
+
+    async def test_skips_entries_with_missing_fields(self):
+        """Entries without valid_from or value_inc_vat are skipped."""
+        coord = FakeCoordinatorForFetch(tracker_product="SILVER-25-09-02")
+        mock_rates = [
+            {"valid_from": "2026-04-01T00:00:00Z", "value_inc_vat": 24.5},
+            {"valid_from": "", "value_inc_vat": 20.0},
+            {"valid_from": "2026-03-31T00:00:00Z"},  # missing value_inc_vat
+            {"value_inc_vat": 19.0},  # missing valid_from
+        ]
+        with patch(
+            "custom_components.tracker_predict.coordinator.fetch_octopus_rates",
+            new_callable=AsyncMock,
+            return_value=mock_rates,
+        ):
+            result = await coord._fetch_actual_tracker_rates()
+        assert result == {"2026-04-01": 24.5}
+
+    async def test_error_returns_empty_dict(self):
+        """API failure returns empty dict (non-fatal)."""
+        coord = FakeCoordinatorForFetch(tracker_product="SILVER-25-09-02")
+        with patch(
+            "custom_components.tracker_predict.coordinator.fetch_octopus_rates",
+            new_callable=AsyncMock,
+            side_effect=Exception("network error"),
+        ):
+            result = await coord._fetch_actual_tracker_rates()
+        assert result == {}
+
+    async def test_uses_resolved_product_when_no_configured(self):
+        """Falls back to _resolved_tracker_product from discovery."""
+        coord = FakeCoordinatorForFetch(
+            tracker_product=None, resolved_product="SILVER-25-09-02"
+        )
+        with patch(
+            "custom_components.tracker_predict.coordinator.fetch_octopus_rates",
+            new_callable=AsyncMock,
+            return_value=[],
+        ) as mock_fetch:
+            await coord._fetch_actual_tracker_rates()
+        assert mock_fetch.call_args[0][1] == "SILVER-25-09-02"
