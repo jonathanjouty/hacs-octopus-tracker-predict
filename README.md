@@ -153,7 +153,8 @@ The forecast data is already exposed in a format that works well with popular Lo
 
 Requires [apexcharts-card](https://github.com/RomRider/apexcharts-card) (install via HACS → Frontend).
 
-Shows estimated daily rates with a shaded confidence band:
+Shows estimated daily rates with a shaded confidence band (uses an area masking
+trick — the card doesn't support native range area charts):
 
 ```yaml
 type: custom:apexcharts-card
@@ -173,7 +174,7 @@ series:
   - entity: sensor.tracker_predict_forecast_a
     name: High
     type: area
-    color: FF5252
+    color: DF19FF
     opacity: 0.2
     stroke_width: 1
     data_generator: |
@@ -183,8 +184,17 @@ series:
   - entity: sensor.tracker_predict_forecast_a
     name: Low
     type: area
-    color: var(--card-background-color, #1c1c1c)
+    color: white
     opacity: 1
+    stroke_width: 0
+    data_generator: |
+      return entity.attributes.forecast.map((item) => [
+        new Date(item.date).getTime(), item.tracker_low
+      ]);
+  - entity: sensor.tracker_predict_forecast_a
+    name: Low
+    type: line
+    color: DF19FF
     stroke_width: 1
     data_generator: |
       return entity.attributes.forecast.map((item) => [
@@ -193,7 +203,7 @@ series:
   - entity: sensor.tracker_predict_forecast_a
     name: Predicted
     type: line
-    color: white
+    color: "524155"
     stroke_width: 3
     data_generator: |
       return entity.attributes.forecast.map((item) => [
