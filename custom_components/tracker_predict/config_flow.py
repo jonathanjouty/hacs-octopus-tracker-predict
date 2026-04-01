@@ -25,8 +25,12 @@ from .const import (
     DEFAULT_POLL_INTERVAL,
     DEFAULT_REGION,
     DOMAIN,
+    KNOWN_TRACKER_PRODUCTS,
     REGIONS,
 )
+
+
+_TRACKER_PRODUCT_OPTIONS = {"": "Auto-detect"} | {c: c for c in KNOWN_TRACKER_PRODUCTS}
 
 
 class TrackerPredictConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -117,7 +121,7 @@ class TrackerPredictOptionsFlow(OptionsFlow):
                     vol.Optional(
                         CONF_TRACKER_PRODUCT_CODE,
                         default=options.get(CONF_TRACKER_PRODUCT_CODE, ""),
-                    ): str,
+                    ): vol.In(_TRACKER_PRODUCT_OPTIONS),
                 }
             ),
         )

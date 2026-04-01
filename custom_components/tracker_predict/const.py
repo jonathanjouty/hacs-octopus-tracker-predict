@@ -40,10 +40,25 @@ DEFAULT_CALIBRATION: dict[str, tuple[float, float]] = {
     "P": (0.4726, 15.35),
 }
 
+# All known Octopus Tracker (SILVER) product codes, newest first.
+# Tracker products are deliberately excluded from the Octopus products listing
+# API, so we probe these codes directly to find the currently-active one.
+# Add new codes here when Octopus releases a new Tracker version.
+KNOWN_TRACKER_PRODUCTS = [
+    "SILVER-25-09-02",       # September 2025 v1
+    "SILVER-25-04-15",       # April 2025 v1
+    "SILVER-24-12-31",       # December 2024 v1
+    "SILVER-24-10-01",       # October 2024 v1
+    "SILVER-24-07-01",       # July 2024 v1
+    "SILVER-24-04-03",       # April 2024 v1
+    "SILVER-23-12-06",       # December 2023 v1
+    "SILVER-FLEX-22-11-25",  # November 2022 v1 (original)
+]
+
 # Default product codes — Tracker is no longer listed in the Octopus products
 # API but the tariff endpoints still work with known product codes.
 DEFAULT_AGILE_PRODUCT = "AGILE-24-10-01"
-DEFAULT_TRACKER_PRODUCT = "SILVER-25-09-02"
+DEFAULT_TRACKER_PRODUCT = KNOWN_TRACKER_PRODUCTS[0]
 
 AGILE_PREDICT_URL = "https://agilepredict.com/api/{region}"
 AGILE_PREDICT_ALT_URL = "https://prices.fly.dev/api/{region}"

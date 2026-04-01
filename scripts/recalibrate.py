@@ -48,7 +48,21 @@ OCTOPUS_API_BASE = "https://api.octopus.energy/v1"
 OCTOPUS_PRODUCTS_URL = f"{OCTOPUS_API_BASE}/products/"
 
 DEFAULT_AGILE_PRODUCT = "AGILE-24-10-01"
-DEFAULT_TRACKER_PRODUCT = "SILVER-25-09-02"
+
+# All known Octopus Tracker (SILVER) product codes, newest first.
+# Tracker products are not listed in the Octopus products API — probe directly.
+# Keep in sync with KNOWN_TRACKER_PRODUCTS in const.py.
+KNOWN_TRACKER_PRODUCTS = [
+    "SILVER-25-09-02",       # September 2025 v1
+    "SILVER-25-04-15",       # April 2025 v1
+    "SILVER-24-12-31",       # December 2024 v1
+    "SILVER-24-10-01",       # October 2024 v1
+    "SILVER-24-07-01",       # July 2024 v1
+    "SILVER-24-04-03",       # April 2024 v1
+    "SILVER-23-12-06",       # December 2023 v1
+    "SILVER-FLEX-22-11-25",  # November 2022 v1 (original)
+]
+DEFAULT_TRACKER_PRODUCT = KNOWN_TRACKER_PRODUCTS[0]
 
 CALIBRATION_DAYS = 90
 MIN_SAMPLES = 7
@@ -60,12 +74,18 @@ MIN_SAMPLES = 7
 async def discover_product_code(
     session: aiohttp.ClientSession, prefix: str
 ) -> str | None:
-    """Discover the latest product code matching a prefix (with pagination)."""
+    """Discover the latest product code matching a prefix.
+
+    For SILVER (Tracker), probes KNOWN_TRACKER_PRODUCTS directly because
+    Octopus excludes Tracker products from the listing API.
+    For other prefixes, searches the products listing API.
+    """
+    if prefix == "SILVER":
+        return await _discover_tracker_product_code(session)
+
     all_results: list[dict] = []
     url: str | None = OCTOPUS_PRODUCTS_URL
     params: dict[str, str] = {"page_size": "100"}
-    if prefix == "SILVER":
-        params["is_tracker"] = "true"
 
     try:
         while url:
@@ -87,6 +107,34 @@ async def discover_product_code(
     except Exception:
         _LOG.exception("Error discovering product code for prefix '%s'", prefix)
         return None
+
+
+async def _discover_tracker_product_code(session: aiohttp.ClientSession) -> str | None:
+    """Find the active Tracker product by probing KNOWN_TRACKER_PRODUCTS directly."""
+    first_existing: str | None = None
+    for code in KNOWN_TRACKER_PRODUCTS:
+        try:
+            url = f"{OCTOPUS_API_BASE}/products/{code}/"
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                if resp.status != 200:
+                    continue
+                data = await resp.json()
+            if first_existing is None:
+                first_existing = code
+            if data.get("available_to") is None:
+                _LOG.info("Discovered active Tracker product: %s", code)
+                return code
+        except Exception:
+            _LOG.debug("Error probing Tracker product %s", code, exc_info=True)
+
+    if first_existing:
+        _LOG.warning(
+            "No Tracker product in KNOWN_TRACKER_PRODUCTS has available_to=null. "
+            "A newer product code may exist — update KNOWN_TRACKER_PRODUCTS. "
+            "Using most recent known code: %s",
+            first_existing,
+        )
+    return first_existing
 
 
 async def fetch_rates(
