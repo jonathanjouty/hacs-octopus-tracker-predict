@@ -13,7 +13,13 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .calibration import CalibrationModel, calibrate, default_model, fetch_octopus_rates
+from .calibration import (
+    CalibrationModel,
+    calibrate,
+    default_model,
+    discover_product_code,
+    fetch_octopus_rates,
+)
 from .const import (
     AGILE_PREDICT_URL,
     CONF_AGILE_PRODUCT_CODE,
@@ -80,6 +86,8 @@ class TrackerPredictCoordinator(DataUpdateCoordinator[TrackerPredictData]):
         )
         self._agile_product: str | None = entry.options.get(CONF_AGILE_PRODUCT_CODE)
         self._tracker_product: str | None = entry.options.get(CONF_TRACKER_PRODUCT_CODE)
+
+        self._resolved_tracker_product: str | None = None
 
         self._model: CalibrationModel = default_model(self._region)
         self._last_calibration: datetime | None = None
@@ -175,12 +183,18 @@ class TrackerPredictCoordinator(DataUpdateCoordinator[TrackerPredictData]):
 
         _LOGGER.debug("Running calibration for region %s", self._region)
         try:
+            # Discover the active tracker product so both calibration and
+            # actual-rate fetching use the same (current) product code.
+            if not self._tracker_product:
+                discovered = await discover_product_code(self.session, "SILVER")
+                if discovered:
+                    self._resolved_tracker_product = discovered
             self._model = await calibrate(
                 self.session,
                 self._region,
                 self._calibration_days,
                 self._agile_product or None,
-                self._tracker_product or None,
+                self._tracker_product or self._resolved_tracker_product,
             )
             self._last_calibration = now
             await self._async_save_model()
@@ -313,7 +327,7 @@ class TrackerPredictCoordinator(DataUpdateCoordinator[TrackerPredictData]):
         Returns a dict mapping date strings (YYYY-MM-DD) to value_inc_vat.
         Non-fatal: returns empty dict on failure.
         """
-        product = self._tracker_product or DEFAULT_TRACKER_PRODUCT
+        product = self._tracker_product or self._resolved_tracker_product or DEFAULT_TRACKER_PRODUCT
         try:
             rates = await fetch_octopus_rates(
                 self.session, product, self._region, days=2

@@ -1,6 +1,7 @@
 """Tests for the coordinator transformation logic."""
 
 from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -327,3 +328,76 @@ class TestOverlayActualRates:
         result = coord._overlay_actual_rates(forecasts, actual_rates)
         dates = [f.date for f in result]
         assert dates == sorted(dates)
+
+
+class FakeCoordinatorForFetch:
+    """Stand-in with attributes needed by _fetch_actual_tracker_rates."""
+
+    def __init__(self, tracker_product=None, resolved_product=None):
+        self._tracker_product = tracker_product
+        self._resolved_tracker_product = resolved_product
+        self._region = "A"
+        self.session = AsyncMock()
+
+    _fetch_actual_tracker_rates = TrackerPredictCoordinator._fetch_actual_tracker_rates
+
+
+class TestFetchActualTrackerRates:
+    """Tests for _fetch_actual_tracker_rates parsing logic."""
+
+    async def test_happy_path_parses_rates(self):
+        """Rates are parsed into a date→value dict, first value per date wins."""
+        coord = FakeCoordinatorForFetch(tracker_product="SILVER-25-09-02")
+        mock_rates = [
+            {"valid_from": "2026-04-01T00:00:00Z", "value_inc_vat": 24.5},
+            {"valid_from": "2026-04-01T12:00:00Z", "value_inc_vat": 25.0},
+            {"valid_from": "2026-03-31T00:00:00Z", "value_inc_vat": 22.1},
+        ]
+        with patch(
+            "custom_components.tracker_predict.coordinator.fetch_octopus_rates",
+            new_callable=AsyncMock,
+            return_value=mock_rates,
+        ):
+            result = await coord._fetch_actual_tracker_rates()
+        assert result == {"2026-04-01": 24.5, "2026-03-31": 22.1}
+
+    async def test_skips_entries_with_missing_fields(self):
+        """Entries without valid_from or value_inc_vat are skipped."""
+        coord = FakeCoordinatorForFetch(tracker_product="SILVER-25-09-02")
+        mock_rates = [
+            {"valid_from": "2026-04-01T00:00:00Z", "value_inc_vat": 24.5},
+            {"valid_from": "", "value_inc_vat": 20.0},
+            {"valid_from": "2026-03-31T00:00:00Z"},  # missing value_inc_vat
+            {"value_inc_vat": 19.0},  # missing valid_from
+        ]
+        with patch(
+            "custom_components.tracker_predict.coordinator.fetch_octopus_rates",
+            new_callable=AsyncMock,
+            return_value=mock_rates,
+        ):
+            result = await coord._fetch_actual_tracker_rates()
+        assert result == {"2026-04-01": 24.5}
+
+    async def test_error_returns_empty_dict(self):
+        """API failure returns empty dict (non-fatal)."""
+        coord = FakeCoordinatorForFetch(tracker_product="SILVER-25-09-02")
+        with patch(
+            "custom_components.tracker_predict.coordinator.fetch_octopus_rates",
+            new_callable=AsyncMock,
+            side_effect=Exception("network error"),
+        ):
+            result = await coord._fetch_actual_tracker_rates()
+        assert result == {}
+
+    async def test_uses_resolved_product_when_no_configured(self):
+        """Falls back to _resolved_tracker_product from discovery."""
+        coord = FakeCoordinatorForFetch(
+            tracker_product=None, resolved_product="SILVER-25-09-02"
+        )
+        with patch(
+            "custom_components.tracker_predict.coordinator.fetch_octopus_rates",
+            new_callable=AsyncMock,
+            return_value=[],
+        ) as mock_fetch:
+            await coord._fetch_actual_tracker_rates()
+        assert mock_fetch.call_args[0][1] == "SILVER-25-09-02"
