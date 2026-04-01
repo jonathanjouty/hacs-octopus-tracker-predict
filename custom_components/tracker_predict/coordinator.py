@@ -13,7 +13,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .calibration import CalibrationModel, calibrate, default_model
+from .calibration import CalibrationModel, calibrate, default_model, fetch_octopus_rates
 from .const import (
     AGILE_PREDICT_URL,
     CONF_AGILE_PRODUCT_CODE,
@@ -25,6 +25,7 @@ from .const import (
     DEFAULT_CALIBRATION_DAYS,
     DEFAULT_CALIBRATION_INTERVAL,
     DEFAULT_POLL_INTERVAL,
+    DEFAULT_TRACKER_PRODUCT,
     DOMAIN,
     MIN_TODAY_SLOTS,
 )
@@ -306,6 +307,90 @@ class TrackerPredictCoordinator(DataUpdateCoordinator[TrackerPredictData]):
 
         return forecasts
 
+    async def _fetch_actual_tracker_rates(self) -> dict[str, float]:
+        """Fetch recent actual Tracker rates from the Octopus API.
+
+        Returns a dict mapping date strings (YYYY-MM-DD) to value_inc_vat.
+        Non-fatal: returns empty dict on failure.
+        """
+        product = self._tracker_product or DEFAULT_TRACKER_PRODUCT
+        try:
+            rates = await fetch_octopus_rates(
+                self.session, product, self._region, days=2
+            )
+        except Exception:
+            _LOGGER.debug("Failed to fetch actual Tracker rates", exc_info=True)
+            return {}
+
+        # Tracker rates are daily (one rate per day), so just take the first
+        # value_inc_vat per date.
+        daily: dict[str, float] = {}
+        for rate in rates:
+            valid_from = rate.get("valid_from", "")
+            value = rate.get("value_inc_vat")
+            if not valid_from or value is None:
+                continue
+            date_str = valid_from[:10]
+            if date_str not in daily:
+                daily[date_str] = float(value)
+        return daily
+
+    def _overlay_actual_rates(
+        self,
+        forecasts: list[DayForecast],
+        actual_rates: dict[str, float],
+    ) -> list[DayForecast]:
+        """Overlay actual Tracker rates onto forecasts.
+
+        - Replaces predicted values for matching dates with actuals
+        - Inserts today if it was filtered out by MIN_TODAY_SLOTS
+        - Only overlays dates >= today (ignores yesterday)
+        """
+        if not actual_rates:
+            return forecasts
+
+        today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        forecast_dates = {f.date for f in forecasts}
+
+        # Replace predictions with actuals for existing forecast dates
+        updated: list[DayForecast] = []
+        for f in forecasts:
+            if f.date in actual_rates and f.date >= today_str:
+                rate = actual_rates[f.date]
+                updated.append(DayForecast(
+                    date=f.date,
+                    tracker_est=round(rate, 2),
+                    tracker_low=round(rate, 2),
+                    tracker_high=round(rate, 2),
+                    confidence="actual",
+                    day_of_week=f.day_of_week,
+                    agile_daily_mean=f.agile_daily_mean,
+                    slot_count=f.slot_count,
+                ))
+            else:
+                updated.append(f)
+
+        # Insert actual rates for dates not in forecasts (e.g. today filtered out)
+        for date_str, rate in actual_rates.items():
+            if date_str >= today_str and date_str not in forecast_dates:
+                try:
+                    day_of_week = datetime.strptime(date_str, "%Y-%m-%d").strftime("%a")
+                except ValueError:
+                    day_of_week = "?"
+                updated.append(DayForecast(
+                    date=date_str,
+                    tracker_est=round(rate, 2),
+                    tracker_low=round(rate, 2),
+                    tracker_high=round(rate, 2),
+                    confidence="actual",
+                    day_of_week=day_of_week,
+                    agile_daily_mean=0.0,
+                    slot_count=0,
+                ))
+
+        updated.sort(key=lambda f: f.date)
+        return updated
+
     async def _async_update_data(self) -> TrackerPredictData:
         """Fetch data from APIs."""
         await self._maybe_calibrate()
@@ -313,6 +398,9 @@ class TrackerPredictCoordinator(DataUpdateCoordinator[TrackerPredictData]):
         try:
             prices, forecast_generated_at = await self._fetch_agile_predict()
             forecasts = self._transform_forecast(prices)
+
+            actual_rates = await self._fetch_actual_tracker_rates()
+            forecasts = self._overlay_actual_rates(forecasts, actual_rates)
 
             return TrackerPredictData(
                 forecasts=forecasts,

@@ -46,6 +46,7 @@ class FakeCoordinator:
         self._model = model or make_model()
 
     _transform_forecast = TrackerPredictCoordinator._transform_forecast
+    _overlay_actual_rates = TrackerPredictCoordinator._overlay_actual_rates
 
 
 class TestTransformForecast:
@@ -222,3 +223,107 @@ class TestPartialTodayFiltering:
         dates = [f.date for f in forecasts]
         assert day_after in dates
         assert len(forecasts) == 2
+
+
+class TestOverlayActualRates:
+    """Tests for overlaying actual Tracker rates onto forecasts."""
+
+    def _today_str(self):
+        return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    def _tomorrow_str(self):
+        return (datetime.now(timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%d")
+
+    def _yesterday_str(self):
+        return (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+
+    def _make_forecast(self, date_str, est=20.0, confidence="high"):
+        return DayForecast(
+            date=date_str, tracker_est=est, tracker_low=est - 2,
+            tracker_high=est + 2, confidence=confidence,
+            day_of_week="Mon", agile_daily_mean=15.0, slot_count=48,
+        )
+
+    def test_actual_replaces_prediction(self):
+        """Actual rate overwrites predicted values and sets confidence='actual'."""
+        coord = FakeCoordinator()
+        today = self._today_str()
+        forecasts = [self._make_forecast(today, est=20.0)]
+        actual_rates = {today: 24.5}
+
+        result = coord._overlay_actual_rates(forecasts, actual_rates)
+        assert len(result) == 1
+        assert result[0].tracker_est == 24.5
+        assert result[0].tracker_low == 24.5
+        assert result[0].tracker_high == 24.5
+        assert result[0].confidence == "actual"
+
+    def test_actual_inserts_filtered_today(self):
+        """Today excluded by MIN_TODAY_SLOTS is re-inserted with actual rate."""
+        coord = FakeCoordinator()
+        today = self._today_str()
+        tomorrow = self._tomorrow_str()
+        # Forecasts only have tomorrow (today was filtered out)
+        forecasts = [self._make_forecast(tomorrow, est=22.0)]
+        actual_rates = {today: 19.8}
+
+        result = coord._overlay_actual_rates(forecasts, actual_rates)
+        dates = [f.date for f in result]
+        assert today in dates
+        assert len(result) == 2
+        today_forecast = next(f for f in result if f.date == today)
+        assert today_forecast.tracker_est == 19.8
+        assert today_forecast.confidence == "actual"
+        assert today_forecast.slot_count == 0  # inserted, not from Agile Predict
+
+    def test_actual_tomorrow(self):
+        """Tomorrow's actual rate replaces its prediction."""
+        coord = FakeCoordinator()
+        tomorrow = self._tomorrow_str()
+        forecasts = [self._make_forecast(tomorrow, est=25.0)]
+        actual_rates = {tomorrow: 21.3}
+
+        result = coord._overlay_actual_rates(forecasts, actual_rates)
+        assert result[0].tracker_est == 21.3
+        assert result[0].confidence == "actual"
+
+    def test_actual_ignores_past_dates(self):
+        """Yesterday's rate from API is not inserted."""
+        coord = FakeCoordinator()
+        yesterday = self._yesterday_str()
+        today = self._today_str()
+        forecasts = [self._make_forecast(today, est=20.0)]
+        actual_rates = {yesterday: 18.0, today: 22.0}
+
+        result = coord._overlay_actual_rates(forecasts, actual_rates)
+        dates = [f.date for f in result]
+        assert yesterday not in dates
+        assert len(result) == 1
+
+    def test_actual_empty_no_change(self):
+        """Empty actual rates dict leaves forecasts unchanged."""
+        coord = FakeCoordinator()
+        today = self._today_str()
+        forecasts = [self._make_forecast(today, est=20.0)]
+
+        result = coord._overlay_actual_rates(forecasts, {})
+        assert len(result) == 1
+        assert result[0].tracker_est == 20.0
+        assert result[0].confidence == "high"
+
+    def test_overlay_preserves_sort_order(self):
+        """Output is sorted by date after overlay."""
+        coord = FakeCoordinator()
+        today = self._today_str()
+        tomorrow = self._tomorrow_str()
+        day_after = (datetime.now(timezone.utc) + timedelta(days=2)).strftime("%Y-%m-%d")
+        # Forecasts have tomorrow and day_after, today was filtered
+        forecasts = [
+            self._make_forecast(day_after, est=30.0),
+            self._make_forecast(tomorrow, est=25.0),
+        ]
+        actual_rates = {today: 19.0}
+
+        result = coord._overlay_actual_rates(forecasts, actual_rates)
+        dates = [f.date for f in result]
+        assert dates == sorted(dates)
