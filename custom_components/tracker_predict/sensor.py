@@ -43,8 +43,7 @@ def _get_today_forecast(data: TrackerPredictData | None) -> DayForecast | None:
     for f in data.forecasts:
         if f.date == today:
             return f
-    # If today not found, return first forecast (may be partial day)
-    return data.forecasts[0] if data.forecasts else None
+    return None
 
 
 def _ranked_forecasts(data: TrackerPredictData | None) -> list[dict]:

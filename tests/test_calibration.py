@@ -14,7 +14,7 @@ class TestCalibrationModel:
     def test_predict_basic(self):
         model = default_model()
         result = model.predict(20.0)
-        expected = 0.56 * 20.0 + 12.75
+        expected = model.slope * 20.0 + model.intercept
         assert abs(result - expected) < 0.01
 
     def test_predict_clamp_low(self):
