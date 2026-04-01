@@ -157,6 +157,9 @@ Shows estimated daily rates as bars with dashed low/high lines:
 
 ```yaml
 type: custom:apexcharts-card
+graph_span: 14d
+span:
+  start: day
 header:
   title: Tracker Forecast
   show: true
