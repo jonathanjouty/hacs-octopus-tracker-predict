@@ -168,8 +168,7 @@ apex_config:
     labels:
       format: ddd dd MMM
   yaxis:
-    - min: ~
-      forceNiceScale: true
+    - forceNiceScale: true
 series:
   - entity: sensor.tracker_predict_forecast_a
     name: High
