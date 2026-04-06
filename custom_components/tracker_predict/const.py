@@ -17,27 +17,27 @@ DEFAULT_CALIBRATION_INTERVAL = 168  # 7 days in hours
 DEFAULT_CHEAP_THRESHOLD_PERCENTILE = 20
 
 # Fallback linear model — overall average used when region lookup fails
-DEFAULT_SLOPE = 0.5422
-DEFAULT_INTERCEPT = 14.05
+DEFAULT_SLOPE = 0.5117
+DEFAULT_INTERCEPT = 14.61
 
 # Per-region default calibration (slope, intercept).
 # All regions currently share the same fallback values. The quarterly
 # recalibrate.yml workflow will differentiate them with real API data.
 DEFAULT_CALIBRATION: dict[str, tuple[float, float]] = {
-    "A": (0.557, 14.12),
-    "B": (0.5719, 13.14),
-    "C": (0.5863, 13.24),
-    "D": (0.5399, 15.16),
-    "E": (0.5492, 13.3),
-    "F": (0.5401, 13.43),
-    "G": (0.5494, 14.66),
-    "H": (0.5484, 14.19),
-    "J": (0.5254, 14.62),
-    "K": (0.518, 14.44),
-    "L": (0.4898, 14.78),
-    "M": (0.5877, 12.78),
-    "N": (0.5546, 13.48),
-    "P": (0.4728, 15.34),
+    "A": (0.5248, 14.72),
+    "B": (0.5395, 13.72),
+    "C": (0.5515, 13.86),
+    "D": (0.5084, 15.77),
+    "E": (0.5182, 13.87),
+    "F": (0.5107, 13.96),
+    "G": (0.5184, 15.23),
+    "H": (0.5176, 14.75),
+    "J": (0.4962, 15.17),
+    "K": (0.49, 14.97),
+    "L": (0.4643, 15.26),
+    "M": (0.5527, 13.41),
+    "N": (0.5228, 14.07),
+    "P": (0.4482, 15.82),
 }
 
 # All known Octopus Tracker (SILVER) product codes, newest first.
