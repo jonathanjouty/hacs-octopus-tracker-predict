@@ -17,6 +17,8 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .calibration import (
     CalibrationModel,
     calibrate,
+    compute_daily_means,
+    compute_rolling_means,
     default_model,
     discover_product_code,
     fetch_octopus_rates,
@@ -29,9 +31,11 @@ from .const import (
     CONF_POLL_INTERVAL,
     CONF_REGION,
     CONF_TRACKER_PRODUCT_CODE,
+    DEFAULT_AGILE_PRODUCT,
     DEFAULT_CALIBRATION_DAYS,
     DEFAULT_CALIBRATION_INTERVAL,
     DEFAULT_POLL_INTERVAL,
+    DEFAULT_ROLLING_WINDOW,
     DEFAULT_TRACKER_PRODUCT,
     DOMAIN,
     MIN_TODAY_SLOTS,
@@ -136,6 +140,7 @@ class TrackerPredictCoordinator(DataUpdateCoordinator[TrackerPredictData]):
                 r_squared=float(data["r_squared"]),
                 calibrated_at=calibrated_at,
                 sample_count=int(data["sample_count"]),
+                rolling_window=int(data.get("rolling_window", DEFAULT_ROLLING_WINDOW)),
             )
             self._last_calibration = calibrated_at
             _LOGGER.info(
@@ -159,6 +164,7 @@ class TrackerPredictCoordinator(DataUpdateCoordinator[TrackerPredictData]):
                 "r_squared": self._model.r_squared,
                 "calibrated_at": self._model.calibrated_at.isoformat(),
                 "sample_count": self._model.sample_count,
+                "rolling_window": self._model.rolling_window,
             })
         except Exception:
             _LOGGER.exception("Error saving calibration model to storage")
@@ -238,8 +244,36 @@ class TrackerPredictCoordinator(DataUpdateCoordinator[TrackerPredictData]):
 
         return prices, forecast_generated_at
 
-    def _transform_forecast(self, prices: list[dict]) -> list[DayForecast]:
-        """Transform half-hourly Agile predictions to daily Tracker estimates."""
+    async def _fetch_recent_agile_actuals(self) -> dict[str, float]:
+        """Fetch recent actual Agile rates for rolling mean computation.
+
+        Returns a dict mapping date strings (YYYY-MM-DD) to daily mean rate.
+        Fetches enough days to fill the model's rolling window. Non-fatal:
+        returns empty dict on failure (rolling mean will use forecast values only).
+        """
+        agile_product = self._agile_product or DEFAULT_AGILE_PRODUCT
+        try:
+            rates = await fetch_octopus_rates(
+                self.session, agile_product, self._region,
+                days=self._model.rolling_window,
+            )
+            return compute_daily_means(rates)
+        except Exception:
+            _LOGGER.debug("Failed to fetch recent Agile actuals for rolling mean", exc_info=True)
+            return {}
+
+    def _transform_forecast(
+        self,
+        prices: list[dict],
+        agile_actual_daily: dict[str, float] | None = None,
+    ) -> list[DayForecast]:
+        """Transform half-hourly Agile predictions to daily Tracker estimates.
+
+        Uses a rolling mean of Agile daily prices as the model input, matching
+        the smoothing structure of the Tracker formula.  agile_actual_daily
+        should contain recent actual Agile daily means so the rolling window is
+        anchored on real data rather than only forecast values.
+        """
         # Group by date
         daily: dict[str, list[dict]] = {}
         for slot in prices:
@@ -249,27 +283,40 @@ class TrackerPredictCoordinator(DataUpdateCoordinator[TrackerPredictData]):
             date_str = dt_str[:10]
             daily.setdefault(date_str, []).append(slot)
 
+        # Build per-date spot means for pred / low / high from the forecast
+        forecast_preds: dict[str, float] = {}
+        forecast_lows: dict[str, float] = {}
+        forecast_highs: dict[str, float] = {}
+        slot_counts: dict[str, int] = {}
+        for date_str, slots in daily.items():
+            agile_preds = [s["agile_pred"] for s in slots if "agile_pred" in s]
+            if not agile_preds:
+                continue
+            agile_lows = [s.get("agile_low", s.get("agile_pred", 0)) for s in slots]
+            agile_highs = [s.get("agile_high", s.get("agile_pred", 0)) for s in slots]
+            forecast_preds[date_str] = sum(agile_preds) / len(agile_preds)
+            forecast_lows[date_str] = sum(agile_lows) / len(agile_lows)
+            forecast_highs[date_str] = sum(agile_highs) / len(agile_highs)
+            slot_counts[date_str] = len(slots)
+
+        # Compute rolling means.  The historical portion (actuals) anchors the
+        # window so near-term predictions are more stable.
+        actuals = agile_actual_daily or {}
+        window = self._model.rolling_window
+        rolling_preds = compute_rolling_means({**actuals, **forecast_preds}, window)
+        rolling_lows = compute_rolling_means({**actuals, **forecast_lows}, window)
+        rolling_highs = compute_rolling_means({**actuals, **forecast_highs}, window)
+
         now = datetime.now(_UK_TZ)
         forecasts: list[DayForecast] = []
 
-        for date_str in sorted(daily):
-            slots = daily[date_str]
-            slot_count = len(slots)
+        for date_str in sorted(forecast_preds):
+            slot_count = slot_counts[date_str]
 
-            agile_preds = [s["agile_pred"] for s in slots if "agile_pred" in s]
-            agile_lows = [s.get("agile_low", s.get("agile_pred", 0)) for s in slots]
-            agile_highs = [s.get("agile_high", s.get("agile_pred", 0)) for s in slots]
-
-            if not agile_preds:
-                continue
-
-            agile_mean = sum(agile_preds) / len(agile_preds)
-            agile_low_mean = sum(agile_lows) / len(agile_lows)
-            agile_high_mean = sum(agile_highs) / len(agile_highs)
-
-            tracker_est = self._model.predict(agile_mean)
-            tracker_low = self._model.predict(agile_low_mean)
-            tracker_high = self._model.predict(agile_high_mean)
+            agile_mean = forecast_preds[date_str]
+            tracker_est = self._model.predict(rolling_preds[date_str])
+            tracker_low = self._model.predict(rolling_lows[date_str])
+            tracker_high = self._model.predict(rolling_highs[date_str])
 
             # Determine confidence
             try:
@@ -417,7 +464,9 @@ class TrackerPredictCoordinator(DataUpdateCoordinator[TrackerPredictData]):
 
         try:
             prices, forecast_generated_at = await self._fetch_agile_predict()
-            forecasts = self._transform_forecast(prices)
+
+            agile_actual_daily = await self._fetch_recent_agile_actuals()
+            forecasts = self._transform_forecast(prices, agile_actual_daily)
 
             actual_rates = await self._fetch_actual_tracker_rates()
             forecasts = self._overlay_actual_rates(forecasts, actual_rates)

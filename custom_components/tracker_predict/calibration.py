@@ -13,6 +13,7 @@ from .const import (
     DEFAULT_AGILE_PRODUCT,
     DEFAULT_CALIBRATION,
     DEFAULT_INTERCEPT,
+    DEFAULT_ROLLING_WINDOW,
     DEFAULT_SLOPE,
     DEFAULT_TRACKER_PRODUCT,
     KNOWN_TRACKER_PRODUCTS,
@@ -25,17 +26,25 @@ _LOGGER = logging.getLogger(__name__)
 
 @dataclass
 class CalibrationModel:
-    """Linear model: tracker_est = slope * agile_daily_mean + intercept."""
+    """Linear model: tracker_est = slope * rolling_mean_agile + intercept.
+
+    The input feature is a trailing rolling mean of Agile daily means rather
+    than the single-day spot mean, because Octopus Tracker rates are set from
+    a rolling average of wholesale prices. Using a rolling mean reduces the
+    systematic bias at price extremes (over-prediction on high days, under-
+    prediction on low days).
+    """
 
     slope: float
     intercept: float
     r_squared: float
     calibrated_at: datetime
     sample_count: int
+    rolling_window: int = DEFAULT_ROLLING_WINDOW
 
-    def predict(self, agile_daily_mean: float) -> float:
-        """Predict Tracker rate from Agile daily mean, clamped to [0, 100]."""
-        return max(0.0, min(100.0, self.slope * agile_daily_mean + self.intercept))
+    def predict(self, agile_rolling_mean: float) -> float:
+        """Predict Tracker rate from rolling Agile mean, clamped to [0, 100]."""
+        return max(0.0, min(100.0, self.slope * agile_rolling_mean + self.intercept))
 
 
 def default_model(region: str = "A") -> CalibrationModel:
@@ -47,13 +56,19 @@ def default_model(region: str = "A") -> CalibrationModel:
         r_squared=0.0,
         calibrated_at=datetime.now(timezone.utc),
         sample_count=0,
+        rolling_window=DEFAULT_ROLLING_WINDOW,
     )
 
 
 def fit_linear_model(
-    agile_means: list[float], tracker_rates: list[float]
+    agile_means: list[float],
+    tracker_rates: list[float],
+    rolling_window: int = DEFAULT_ROLLING_WINDOW,
 ) -> CalibrationModel:
     """Fit a simple linear regression from paired daily values.
+
+    agile_means should already be rolling means (computed by compute_rolling_means)
+    so the model input matches the Tracker formula's smoothing structure.
 
     Uses pure Python (statistics module) to avoid numpy dependency.
     """
@@ -96,14 +111,17 @@ def fit_linear_model(
         r_squared=r_squared,
         calibrated_at=datetime.now(timezone.utc),
         sample_count=n,
+        rolling_window=rolling_window,
     )
 
     _LOGGER.info(
-        "Calibration complete: slope=%.4f, intercept=%.4f, R²=%.4f, samples=%d",
+        "Calibration complete: slope=%.4f, intercept=%.4f, R²=%.4f, "
+        "samples=%d, rolling_window=%d",
         slope,
         intercept,
         r_squared,
         n,
+        rolling_window,
     )
 
     if r_squared < 0.80:
@@ -264,14 +282,36 @@ def compute_daily_means(rates: list[dict]) -> dict[str, float]:
     return {date: statistics.mean(vals) for date, vals in daily.items() if vals}
 
 
+def compute_rolling_means(daily_means: dict[str, float], window: int) -> dict[str, float]:
+    """Compute a trailing N-day mean for each date in the series.
+
+    For each date D, the rolling mean is the arithmetic mean of the window
+    ending at D (inclusive), or fewer days if the series starts later.
+
+    Returns {date_str: rolling_mean} with the same keys as daily_means.
+    """
+    sorted_dates = sorted(daily_means)
+    result: dict[str, float] = {}
+    for i, date in enumerate(sorted_dates):
+        start = max(0, i - window + 1)
+        window_vals = [daily_means[d] for d in sorted_dates[start : i + 1]]
+        result[date] = statistics.mean(window_vals)
+    return result
+
+
 async def calibrate(
     session: ClientSession,
     region: str,
     days: int,
     agile_product: str | None = None,
     tracker_product: str | None = None,
+    rolling_window: int = DEFAULT_ROLLING_WINDOW,
 ) -> CalibrationModel:
-    """Run full calibration: discover products, fetch rates, fit model."""
+    """Run full calibration: discover products, fetch rates, fit model.
+
+    Uses a rolling mean of Agile daily prices as the input feature, which
+    better matches how Octopus sets the Tracker rate.
+    """
 
     # Discover product codes if not provided
     if not agile_product:
@@ -302,17 +342,18 @@ async def calibrate(
         _LOGGER.warning("No historical rate data available. Using default model.")
         return default_model()
 
-    # Compute daily means
+    # Compute daily means then rolling means for Agile
     agile_daily = compute_daily_means(agile_rates)
     tracker_daily = compute_daily_means(tracker_rates)
+    agile_rolling = compute_rolling_means(agile_daily, rolling_window)
 
-    # Pair up days that exist in both
-    common_dates = sorted(set(agile_daily) & set(tracker_daily))
+    # Pair up days that exist in both (use rolling means for Agile)
+    common_dates = sorted(set(agile_rolling) & set(tracker_daily))
     if not common_dates:
         _LOGGER.warning("No overlapping dates between Agile and Tracker. Using default model.")
         return default_model()
 
-    agile_means = [agile_daily[d] for d in common_dates]
+    agile_means = [agile_rolling[d] for d in common_dates]
     tracker_means = [tracker_daily[d] for d in common_dates]
 
-    return fit_linear_model(agile_means, tracker_means)
+    return fit_linear_model(agile_means, tracker_means, rolling_window=rolling_window)

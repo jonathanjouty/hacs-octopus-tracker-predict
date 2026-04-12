@@ -13,11 +13,12 @@ from custom_components.tracker_predict.coordinator import (
 )
 
 
-def make_model(slope=0.56, intercept=12.75):
+def make_model(slope=0.56, intercept=12.75, rolling_window=14):
     return CalibrationModel(
         slope=slope, intercept=intercept, r_squared=0.90,
         calibrated_at=datetime(2026, 3, 25, tzinfo=timezone.utc),
         sample_count=60,
+        rolling_window=rolling_window,
     )
 
 
@@ -140,6 +141,44 @@ class TestTransformForecast:
         prices = make_prices([("2026-03-26", 48, 20.0, 0.1)])
         forecasts = coord._transform_forecast(prices)
         assert forecasts[0].day_of_week == "Thu"
+
+    def test_rolling_mean_with_actuals_smooths_spike(self):
+        """A forecast spike day is smoothed when recent actual history is supplied."""
+        # Model with window=3, slope=1, intercept=0 so predicted == rolling mean
+        coord = FakeCoordinator(model=make_model(slope=1.0, intercept=0.0, rolling_window=3))
+
+        # Recent actuals: two days at 20 p/kWh
+        agile_actual_daily = {
+            "2026-03-24": 20.0,
+            "2026-03-25": 20.0,
+        }
+        # Forecast: spike to 50 p/kWh on 2026-03-26
+        prices = make_prices([("2026-03-26", 48, 50.0, 0.0)])
+
+        forecasts = coord._transform_forecast(prices, agile_actual_daily)
+        assert len(forecasts) == 1
+        f = forecasts[0]
+        # Rolling mean over [20, 20, 50] = 30; spot mean = 50
+        # tracker_est should reflect rolling mean (30), not spot price (50)
+        assert abs(f.tracker_est - 30.0) < 0.5
+        # agile_daily_mean stores the spot price for display purposes
+        assert abs(f.agile_daily_mean - 50.0) < 0.5
+
+    def test_rolling_mean_without_actuals_uses_forecast_only(self):
+        """Without actuals the rolling mean is computed from forecast data only."""
+        coord = FakeCoordinator(model=make_model(slope=1.0, intercept=0.0, rolling_window=3))
+
+        # Two forecast days; window=3 but only 2 days available → partial window
+        prices = make_prices([
+            ("2026-03-25", 48, 10.0, 0.0),
+            ("2026-03-26", 48, 20.0, 0.0),
+        ])
+        forecasts = coord._transform_forecast(prices)
+        by_date = {f.date: f for f in forecasts}
+        # Day 1 rolling mean = 10 (1-day window)
+        assert abs(by_date["2026-03-25"].tracker_est - 10.0) < 0.5
+        # Day 2 rolling mean = mean(10, 20) = 15
+        assert abs(by_date["2026-03-26"].tracker_est - 15.0) < 0.5
 
 
 class TestRankedForecasts:

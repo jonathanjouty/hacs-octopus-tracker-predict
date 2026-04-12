@@ -19,6 +19,10 @@ DEFAULT_CHEAP_THRESHOLD_PERCENTILE = 20
 # Fallback linear model — overall average used when region lookup fails
 DEFAULT_SLOPE = 0.5117
 DEFAULT_INTERCEPT = 14.61
+# Rolling window (days) for the Agile mean used as the model input feature.
+# Tracker rates are set from a rolling average of wholesale prices, so using
+# a trailing mean rather than the single-day spot price reduces the bias at extremes.
+DEFAULT_ROLLING_WINDOW = 14
 
 # Per-region default calibration (slope, intercept).
 # All regions currently share the same fallback values. The quarterly
