@@ -66,6 +66,8 @@ DEFAULT_TRACKER_PRODUCT = KNOWN_TRACKER_PRODUCTS[0]
 
 CALIBRATION_DAYS = 90
 MIN_SAMPLES = 7
+# Candidate rolling windows (days) tried during calibration; best R² wins.
+ROLLING_WINDOW_CANDIDATES = [7, 14, 21, 30]
 
 
 # ── API helpers ──────────────────────────────────────────────────────────────────
@@ -186,6 +188,17 @@ def compute_daily_means(rates: list[dict]) -> dict[str, float]:
     return {date: statistics.mean(vals) for date, vals in daily.items() if vals}
 
 
+def compute_rolling_means(daily_means: dict[str, float], window: int) -> dict[str, float]:
+    """Compute a trailing N-day mean for each date in the series."""
+    sorted_dates = sorted(daily_means)
+    result: dict[str, float] = {}
+    for i, date in enumerate(sorted_dates):
+        start = max(0, i - window + 1)
+        window_vals = [daily_means[d] for d in sorted_dates[start : i + 1]]
+        result[date] = statistics.mean(window_vals)
+    return result
+
+
 def fit_linear_model(
     agile_means: list[float], tracker_rates: list[float]
 ) -> tuple[float, float, float, int] | None:
@@ -215,6 +228,36 @@ def fit_linear_model(
     r_squared = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0.0
 
     return (slope, intercept, r_squared, n)
+
+
+def residuals_by_quintile(
+    agile_vals: list[float],
+    tracker_vals: list[float],
+    slope: float,
+    intercept: float,
+    n_buckets: int = 5,
+) -> list[dict]:
+    """Return mean signed residual per quintile of agile_mean (sorted low→high).
+
+    A negative slope across buckets (positive at low agile, negative at high)
+    indicates that the model over-predicts at high prices and under-predicts at
+    low prices — the signature of using a spot price instead of a rolling mean.
+    """
+    pairs = sorted(zip(agile_vals, tracker_vals), key=lambda p: p[0])
+    n = len(pairs)
+    buckets = []
+    for i in range(n_buckets):
+        start = (i * n) // n_buckets
+        end = ((i + 1) * n) // n_buckets
+        bucket = pairs[start:end]
+        ax_vals = [p[0] for p in bucket]
+        signed_residuals = [ty - (slope * ax + intercept) for ax, ty in bucket]
+        buckets.append({
+            "agile_mean_avg": round(statistics.mean(ax_vals), 2),
+            "mean_signed_residual": round(statistics.mean(signed_residuals), 4),
+            "n": len(bucket),
+        })
+    return buckets
 
 
 # ── Main calibration logic ───────────────────────────────────────────────────────────
@@ -249,15 +292,34 @@ async def calibrate_all_regions() -> dict[str, dict]:
                 _LOG.warning("  Only %d common dates for region %s, skipping", len(common_dates), region)
                 continue
 
-            agile_vals = [agile_daily[d] for d in common_dates]
+            agile_spot_vals = [agile_daily[d] for d in common_dates]
             tracker_vals = [tracker_daily[d] for d in common_dates]
 
-            fit = fit_linear_model(agile_vals, tracker_vals)
-            if fit is None:
+            # Grid-search rolling window: pick the window that maximises R²
+            best_fit = None
+            best_r2 = -1.0
+            best_window = ROLLING_WINDOW_CANDIDATES[0]
+            window_r2: dict[int, float] = {}
+            for window in ROLLING_WINDOW_CANDIDATES:
+                rolling = compute_rolling_means(agile_daily, window)
+                rolling_vals = [rolling[d] for d in common_dates]
+                fit = fit_linear_model(rolling_vals, tracker_vals)
+                if fit is None:
+                    continue
+                r2 = fit[2]
+                window_r2[window] = round(r2, 4)
+                if r2 > best_r2:
+                    best_r2 = r2
+                    best_fit = fit
+                    best_window = window
+                    best_agile_vals = rolling_vals
+
+            if best_fit is None:
                 _LOG.warning("  Fit failed for region %s", region)
                 continue
 
-            slope, intercept, r_squared, samples = fit
+            slope, intercept, r_squared, samples = best_fit
+            agile_vals = best_agile_vals  # rolling means for the winning window
 
             # Compute residual summary statistics
             residuals = [ty - (slope * ax + intercept) for ax, ty in zip(agile_vals, tracker_vals)]
@@ -267,19 +329,31 @@ async def calibrate_all_regions() -> dict[str, dict]:
             std_res = round(statistics.stdev(residuals), 4) if len(residuals) > 1 else 0.0
             max_abs_res = round(max(abs_residuals), 4)
 
+            # Spot-price baseline: residuals by quintile reveal bias at extremes
+            spot_fit = fit_linear_model(agile_spot_vals, tracker_vals)
+            spot_quintiles: list[dict] = []
+            if spot_fit is not None:
+                spot_quintiles = residuals_by_quintile(
+                    agile_spot_vals, tracker_vals, spot_fit[0], spot_fit[1]
+                )
+
             results[region] = {
                 "slope": round(slope, 4),
                 "intercept": round(intercept, 2),
                 "r_squared": round(r_squared, 4),
+                "rolling_window": best_window,
+                "window_r2_comparison": window_r2,
                 "samples": samples,
                 "mae": mae,
                 "rmse": rmse,
                 "std_residual": std_res,
                 "max_abs_residual": max_abs_res,
+                "spot_residuals_by_quintile": spot_quintiles,
             }
             _LOG.info(
-                "  Region %s: slope=%.4f, intercept=%.2f, R²=%.4f, samples=%d, MAE=%.4f, RMSE=%.4f",
-                region, slope, intercept, r_squared, samples, mae, rmse,
+                "  Region %s: slope=%.4f, intercept=%.2f, R²=%.4f (window=%d), "
+                "samples=%d, MAE=%.4f, RMSE=%.4f",
+                region, slope, intercept, r_squared, best_window, samples, mae, rmse,
             )
 
     return results
@@ -289,7 +363,7 @@ async def calibrate_all_regions() -> dict[str, dict]:
 
 
 def update_const_file(results: dict[str, dict], const_path: Path) -> None:
-    """Replace DEFAULT_CALIBRATION dict in const.py with new values."""
+    """Replace DEFAULT_CALIBRATION dict and rolling window in const.py with new values."""
     content = const_path.read_text()
 
     # Build replacement dict literal
@@ -308,7 +382,7 @@ def update_const_file(results: dict[str, dict], const_path: Path) -> None:
         _LOG.error("Could not find DEFAULT_CALIBRATION in %s", const_path)
         sys.exit(1)
 
-    # Also update DEFAULT_SLOPE and DEFAULT_INTERCEPT with the mean across all regions
+    # Update DEFAULT_SLOPE and DEFAULT_INTERCEPT with the mean across all regions
     all_slopes = [r["slope"] for r in results.values()]
     all_intercepts = [r["intercept"] for r in results.values()]
     avg_slope = round(statistics.mean(all_slopes), 4) if all_slopes else 0.56
@@ -322,6 +396,18 @@ def update_const_file(results: dict[str, dict], const_path: Path) -> None:
     new_content = re.sub(
         r"DEFAULT_INTERCEPT = [\d.]+",
         f"DEFAULT_INTERCEPT = {avg_intercept}",
+        new_content,
+    )
+
+    # Update DEFAULT_ROLLING_WINDOW with the most common window across regions
+    windows = [r["rolling_window"] for r in results.values()]
+    # Use the window that appeared most often; tie-break by smallest
+    from collections import Counter
+    window_counts = Counter(windows)
+    best_window = min(window_counts, key=lambda w: (-window_counts[w], w))
+    new_content = re.sub(
+        r"DEFAULT_ROLLING_WINDOW = \d+",
+        f"DEFAULT_ROLLING_WINDOW = {best_window}",
         new_content,
     )
 
@@ -347,7 +433,7 @@ def update_history_file(results: dict[str, dict], history_path: Path) -> None:
     regions_entry: dict[str, dict] = {}
     for region, data in results.items():
         entry = {k: data[k] for k in (
-            "slope", "intercept", "r_squared", "samples",
+            "slope", "intercept", "r_squared", "rolling_window", "samples",
             "mae", "rmse", "std_residual", "max_abs_residual",
         )}
         prev = prev_regions.get(region)
