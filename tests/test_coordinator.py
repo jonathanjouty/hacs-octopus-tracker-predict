@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -11,6 +12,8 @@ from custom_components.tracker_predict.coordinator import (
     TrackerPredictCoordinator,
     TrackerPredictData,
 )
+
+_UK_TZ = ZoneInfo("Europe/London")
 
 
 def make_model(slope=0.56, intercept=12.75, rolling_window=14):
@@ -215,10 +218,10 @@ class TestPartialTodayFiltering:
     """Tests for excluding today when it has too few slots."""
 
     def _today_str(self):
-        return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        return datetime.now(_UK_TZ).strftime("%Y-%m-%d")
 
     def _tomorrow_str(self):
-        return (datetime.now(timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%d")
+        return (datetime.now(_UK_TZ) + timedelta(days=1)).strftime("%Y-%m-%d")
 
     def test_partial_today_excluded(self):
         """Today with fewer than 48 slots is excluded from forecasts."""
@@ -254,7 +257,7 @@ class TestPartialTodayFiltering:
         """A future day with fewer than 48 slots is NOT filtered out."""
         coord = FakeCoordinator()
         tomorrow = self._tomorrow_str()
-        day_after = (datetime.now(timezone.utc) + timedelta(days=2)).strftime("%Y-%m-%d")
+        day_after = (datetime.now(_UK_TZ) + timedelta(days=2)).strftime("%Y-%m-%d")
         prices = make_prices([
             (tomorrow, 48, 25.0, 0.2),
             (day_after, 10, 30.0, 0.3),   # partial future day
@@ -269,13 +272,13 @@ class TestOverlayActualRates:
     """Tests for overlaying actual Tracker rates onto forecasts."""
 
     def _today_str(self):
-        return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        return datetime.now(_UK_TZ).strftime("%Y-%m-%d")
 
     def _tomorrow_str(self):
-        return (datetime.now(timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%d")
+        return (datetime.now(_UK_TZ) + timedelta(days=1)).strftime("%Y-%m-%d")
 
     def _yesterday_str(self):
-        return (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+        return (datetime.now(_UK_TZ) - timedelta(days=1)).strftime("%Y-%m-%d")
 
     def _make_forecast(self, date_str, est=20.0, confidence="high"):
         return DayForecast(
@@ -356,7 +359,7 @@ class TestOverlayActualRates:
         coord = FakeCoordinator()
         today = self._today_str()
         tomorrow = self._tomorrow_str()
-        day_after = (datetime.now(timezone.utc) + timedelta(days=2)).strftime("%Y-%m-%d")
+        day_after = (datetime.now(_UK_TZ) + timedelta(days=2)).strftime("%Y-%m-%d")
         # Forecasts have tomorrow and day_after, today was filtered
         forecasts = [
             self._make_forecast(day_after, est=30.0),
