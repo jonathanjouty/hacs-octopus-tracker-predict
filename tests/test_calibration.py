@@ -9,6 +9,7 @@ from custom_components.tracker_predict.calibration import (
     default_model,
     fit_linear_model,
 )
+from custom_components.tracker_predict.const import DEFAULT_ROLLING_WINDOW
 
 
 class TestCalibrationModel:
@@ -34,7 +35,7 @@ class TestCalibrationModel:
 
     def test_default_rolling_window(self):
         model = default_model()
-        assert model.rolling_window == 14
+        assert model.rolling_window == DEFAULT_ROLLING_WINDOW
 
     def test_custom_rolling_window_stored(self):
         model = CalibrationModel(
@@ -92,7 +93,7 @@ class TestFitLinearModel:
         x = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0]
         y = [0.5 * xi + 10.0 for xi in x]
         model = fit_linear_model(x, y)
-        assert model.rolling_window == 14  # DEFAULT_ROLLING_WINDOW
+        assert model.rolling_window == DEFAULT_ROLLING_WINDOW
 
 
 class TestComputeDailyMeans:
