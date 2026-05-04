@@ -17,8 +17,8 @@ DEFAULT_CALIBRATION_INTERVAL = 168  # 7 days in hours
 DEFAULT_CHEAP_THRESHOLD_PERCENTILE = 20
 
 # Fallback linear model — overall average used when region lookup fails
-DEFAULT_SLOPE = 0.6247
-DEFAULT_INTERCEPT = 11.89
+DEFAULT_SLOPE = 0.6169
+DEFAULT_INTERCEPT = 11.97
 # Rolling window (days) for the Agile mean used as the model input feature.
 # Tracker rates are set from a rolling average of wholesale prices, so using
 # a trailing mean rather than the single-day spot price reduces the bias at extremes.
@@ -28,20 +28,20 @@ DEFAULT_ROLLING_WINDOW = 7
 # All regions currently share the same fallback values. The quarterly
 # recalibrate.yml workflow will differentiate them with real API data.
 DEFAULT_CALIBRATION: dict[str, tuple[float, float]] = {
-    "A": (0.6365, 12.05),
-    "B": (0.6534, 11.11),
-    "C": (0.6619, 11.36),
-    "D": (0.6184, 13.03),
-    "E": (0.6317, 11.18),
-    "F": (0.6262, 11.23),
-    "G": (0.6317, 12.55),
-    "H": (0.6312, 12.07),
-    "J": (0.6096, 12.37),
-    "K": (0.6052, 12.12),
-    "L": (0.5802, 12.3),
-    "M": (0.6625, 10.9),
-    "N": (0.6351, 11.39),
-    "P": (0.5623, 12.77),
+    "A": (0.6283, 12.15),
+    "B": (0.6459, 11.19),
+    "C": (0.6536, 11.45),
+    "D": (0.6098, 13.13),
+    "E": (0.624, 11.26),
+    "F": (0.6191, 11.3),
+    "G": (0.6241, 12.63),
+    "H": (0.6236, 12.14),
+    "J": (0.6018, 12.45),
+    "K": (0.5978, 12.2),
+    "L": (0.5728, 12.37),
+    "M": (0.6541, 11.0),
+    "N": (0.6272, 11.48),
+    "P": (0.5544, 12.85),
 }
 
 # All known Octopus Tracker (SILVER) product codes, newest first.
