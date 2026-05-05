@@ -10,6 +10,11 @@ from custom_components.tracker_predict.calibration import (
     fit_linear_model,
 )
 from custom_components.tracker_predict.const import DEFAULT_ROLLING_WINDOW
+from scripts.recalibrate import (
+    _average_ranks,
+    spearman_rho,
+    top_n_window_overlap,
+)
 
 
 class TestCalibrationModel:
@@ -180,3 +185,98 @@ class TestComputeRollingMeans:
 
     def test_empty_input(self):
         assert compute_rolling_means({}, window=14) == {}
+
+
+class TestAverageRanks:
+    def test_strictly_increasing(self):
+        assert _average_ranks([10.0, 20.0, 30.0]) == [1.0, 2.0, 3.0]
+
+    def test_strictly_decreasing(self):
+        assert _average_ranks([30.0, 20.0, 10.0]) == [3.0, 2.0, 1.0]
+
+    def test_two_way_tie(self):
+        # 20 and 20 share ranks 2 and 3 -> average 2.5
+        assert _average_ranks([10.0, 20.0, 20.0, 30.0]) == [1.0, 2.5, 2.5, 4.0]
+
+    def test_three_way_tie(self):
+        # All equal -> mean rank
+        assert _average_ranks([5.0, 5.0, 5.0]) == [2.0, 2.0, 2.0]
+
+    def test_singleton(self):
+        assert _average_ranks([42.0]) == [1.0]
+
+
+class TestSpearmanRho:
+    def test_perfect_monotone(self):
+        rho = spearman_rho([1.0, 2.0, 3.0, 4.0, 5.0], [10.0, 20.0, 30.0, 40.0, 50.0])
+        assert abs(rho - 1.0) < 1e-9
+
+    def test_reversed(self):
+        rho = spearman_rho([1.0, 2.0, 3.0, 4.0, 5.0], [50.0, 40.0, 30.0, 20.0, 10.0])
+        assert abs(rho + 1.0) < 1e-9
+
+    def test_invariant_to_monotonic_transform(self):
+        # Spearman should be 1.0 for any monotone-increasing transform
+        xs = [1.0, 2.0, 3.0, 4.0, 5.0]
+        ys = [x ** 3 for x in xs]
+        assert abs(spearman_rho(xs, ys) - 1.0) < 1e-9
+
+    def test_zero_variance_returns_zero(self):
+        assert spearman_rho([1.0, 1.0, 1.0], [1.0, 2.0, 3.0]) == 0.0
+
+    def test_too_few_points(self):
+        assert spearman_rho([1.0], [2.0]) == 0.0
+        assert spearman_rho([], []) == 0.0
+
+    def test_mismatched_lengths(self):
+        assert spearman_rho([1.0, 2.0], [1.0]) == 0.0
+
+    def test_with_ties(self):
+        # Hand-checked: same ordering with one tie on each side -> rho == 1
+        xs = [1.0, 2.0, 2.0, 3.0]
+        ys = [10.0, 20.0, 20.0, 30.0]
+        assert abs(spearman_rho(xs, ys) - 1.0) < 1e-9
+
+
+class TestTopNWindowOverlap:
+    def test_perfect_agreement(self):
+        # Identical series -> overlap is always 1.0
+        s = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]
+        assert top_n_window_overlap(s, s, n=3, window=7) == 1.0
+
+    def test_known_8day_series(self):
+        # 8 days, window=7: two windows (indices 0..6 and 1..7).
+        # predicted is monotone ascending, so its bottom-3 in each window is the
+        # first three indices: {0,1,2} then {1,2,3}.
+        # actual values: [1, 5, 2, 6, 3, 7, 4, 8]
+        #   window1 (idx 0..6, vals [1,5,2,6,3,7,4]) -> bottom-3 idx {0,2,4}
+        #   window2 (idx 1..7, vals [5,2,6,3,7,4,8]) -> bottom-3 idx {2,4,6}
+        # overlap window1 = |{0,1,2} ∩ {0,2,4}| / 3 = 2/3
+        # overlap window2 = |{1,2,3} ∩ {2,4,6}| / 3 = 1/3
+        # mean = (2/3 + 1/3) / 2 = 0.5
+        predicted = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]
+        actual = [1.0, 5.0, 2.0, 6.0, 3.0, 7.0, 4.0, 8.0]
+        result = top_n_window_overlap(predicted, actual, n=3, window=7)
+        assert abs(result - 0.5) < 1e-9
+
+    def test_no_overlap_at_extremes(self):
+        # Reversed predictor: top-3 cheapest predicted == top-3 most expensive actual
+        s = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]
+        rev = list(reversed(s))
+        assert top_n_window_overlap(rev, s, n=3, window=7) == 0.0
+
+    def test_window_too_large_returns_zero(self):
+        assert top_n_window_overlap([1.0, 2.0], [1.0, 2.0], n=1, window=7) == 0.0
+
+    def test_n_larger_than_window_returns_zero(self):
+        s = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]
+        assert top_n_window_overlap(s, s, n=10, window=7) == 0.0
+
+    def test_mismatched_lengths_returns_zero(self):
+        assert top_n_window_overlap([1.0, 2.0], [1.0], n=1, window=2) == 0.0
+
+    def test_ties_are_deterministic(self):
+        # All identical values -> top-N picks earliest indices on both sides,
+        # so overlap is 1.0 (deterministic tie-break by index).
+        s = [5.0] * 7
+        assert top_n_window_overlap(s, s, n=3, window=7) == 1.0
