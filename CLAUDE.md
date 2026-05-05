@@ -29,6 +29,7 @@ scripts/
   recalibrate.py       # Standalone script to recalibrate per-region defaults from live API data
 
 tracker-predict-spec.md  # Original spec document
+rank-accuracy-notes.md   # Findings from rank-metric backfill + candidate next steps
 ```
 
 ## Key technical decisions
