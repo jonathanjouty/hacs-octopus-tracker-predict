@@ -418,6 +418,20 @@ async def calibrate_all_regions() -> dict[str, dict]:
                     agile_spot_vals, tracker_vals, spot_fit[0], spot_fit[1]
                 )
 
+            # Rank-accuracy metrics. The integration's user-facing goal is
+            # picking the cheapest charging days, so rank metrics matter more
+            # than absolute-error metrics. ``baseline_top3_of_7`` uses raw Agile
+            # spot means with no model, exposing whether the linear regression
+            # adds rank value beyond ranking by Agile alone.
+            model_pred = [slope * x + intercept for x in agile_vals]
+            rank_spearman = round(spearman_rho(model_pred, tracker_vals), 4)
+            rank_top3 = round(
+                top_n_window_overlap(model_pred, tracker_vals, n=3, window=7), 4
+            )
+            baseline_top3 = round(
+                top_n_window_overlap(agile_spot_vals, tracker_vals, n=3, window=7), 4
+            )
+
             results[region] = {
                 "slope": round(slope, 4),
                 "intercept": round(intercept, 2),
@@ -429,12 +443,16 @@ async def calibrate_all_regions() -> dict[str, dict]:
                 "rmse": rmse,
                 "std_residual": std_res,
                 "max_abs_residual": max_abs_res,
+                "rank_spearman": rank_spearman,
+                "rank_top3_of_7": rank_top3,
+                "baseline_top3_of_7": baseline_top3,
                 "spot_residuals_by_quintile": spot_quintiles,
             }
             _LOG.info(
                 "  Region %s: slope=%.4f, intercept=%.2f, R²=%.4f (window=%d), "
-                "samples=%d, MAE=%.4f, RMSE=%.4f",
+                "samples=%d, MAE=%.4f, RMSE=%.4f, ρ=%.4f, top3/7=%.4f (baseline %.4f)",
                 region, slope, intercept, r_squared, best_window, samples, mae, rmse,
+                rank_spearman, rank_top3, baseline_top3,
             )
 
     return results
@@ -516,6 +534,7 @@ def update_history_file(results: dict[str, dict], history_path: Path) -> None:
         entry = {k: data[k] for k in (
             "slope", "intercept", "r_squared", "rolling_window", "samples",
             "mae", "rmse", "std_residual", "max_abs_residual",
+            "rank_spearman", "rank_top3_of_7", "baseline_top3_of_7",
         )}
         prev = prev_regions.get(region)
         if prev is not None:
