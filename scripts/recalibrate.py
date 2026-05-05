@@ -144,18 +144,25 @@ async def fetch_rates(
     product_code: str,
     region: str,
     days: int,
+    period_to: datetime | None = None,
 ) -> list[dict]:
-    """Fetch historical unit rates from the Octopus API."""
+    """Fetch historical unit rates from the Octopus API.
+
+    If ``period_to`` is given, fetches the ``days``-long window ending on that
+    instant; otherwise the window ends "now". This enables retroactive fetches
+    of windows that ended on a past date (used by the rank-metric backfill).
+    """
     tariff_code = f"E-1R-{product_code}-{region}"
     url = f"{OCTOPUS_API_BASE}/products/{product_code}/electricity-tariffs/{tariff_code}/standard-unit-rates/"
 
-    period_from = (datetime.now(timezone.utc) - timedelta(days=days)).strftime(
-        "%Y-%m-%dT00:00:00Z"
-    )
+    end = period_to if period_to is not None else datetime.now(timezone.utc)
+    period_from = (end - timedelta(days=days)).strftime("%Y-%m-%dT00:00:00Z")
 
     all_results: list[dict] = []
     page_url: str | None = url
     params: dict[str, str] = {"period_from": period_from, "page_size": "1500"}
+    if period_to is not None:
+        params["period_to"] = period_to.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     try:
         while page_url:
@@ -228,6 +235,80 @@ def fit_linear_model(
     r_squared = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0.0
 
     return (slope, intercept, r_squared, n)
+
+
+def _average_ranks(values: list[float]) -> list[float]:
+    """Return the average ranks (1-based) of values. Tied values get the
+    average of the ranks they would otherwise occupy.
+
+    Example: [10, 20, 20, 30] -> [1, 2.5, 2.5, 4]
+    """
+    n = len(values)
+    indexed = sorted(range(n), key=lambda i: values[i])
+    ranks = [0.0] * n
+    i = 0
+    while i < n:
+        j = i
+        while j + 1 < n and values[indexed[j + 1]] == values[indexed[i]]:
+            j += 1
+        avg_rank = (i + j) / 2 + 1  # +1 for 1-based ranking
+        for k in range(i, j + 1):
+            ranks[indexed[k]] = avg_rank
+        i = j + 1
+    return ranks
+
+
+def spearman_rho(xs: list[float], ys: list[float]) -> float:
+    """Spearman rank correlation coefficient.
+
+    Computed as the Pearson correlation of the average-ranked inputs, which
+    gives the correct value when ties are present.
+    """
+    n = len(xs)
+    if n < 2 or len(ys) != n:
+        return 0.0
+    rx = _average_ranks(xs)
+    ry = _average_ranks(ys)
+    mean_rx = sum(rx) / n
+    mean_ry = sum(ry) / n
+    cov = sum((rx[i] - mean_rx) * (ry[i] - mean_ry) for i in range(n))
+    var_x = sum((rx[i] - mean_rx) ** 2 for i in range(n))
+    var_y = sum((ry[i] - mean_ry) ** 2 for i in range(n))
+    if var_x == 0 or var_y == 0:
+        return 0.0
+    return cov / (var_x * var_y) ** 0.5
+
+
+def top_n_window_overlap(
+    predicted: list[float],
+    actual: list[float],
+    n: int = 3,
+    window: int = 7,
+) -> float:
+    """Mean overlap of the n cheapest days picked by ``predicted`` vs ``actual``
+    across every contiguous ``window``-length slice of the time-ordered series.
+
+    Returns a value in [0, 1]: 1.0 means the predictor identifies the same set
+    of n cheapest days as the actuals in every window. The two input lists are
+    assumed to be aligned and sorted by date.
+
+    With ties, the n indices picked are the n smallest by (value, index) — i.e.
+    earliest tie-broken — which keeps the metric deterministic.
+    """
+    total = len(predicted)
+    if total != len(actual) or total < window or n <= 0 or n > window:
+        return 0.0
+
+    overlaps: list[float] = []
+    for start in range(total - window + 1):
+        idx_window = list(range(start, start + window))
+        pred_top = set(sorted(idx_window, key=lambda i: (predicted[i], i))[:n])
+        actual_top = set(sorted(idx_window, key=lambda i: (actual[i], i))[:n])
+        overlaps.append(len(pred_top & actual_top) / n)
+
+    if not overlaps:
+        return 0.0
+    return sum(overlaps) / len(overlaps)
 
 
 def residuals_by_quintile(
