@@ -6,8 +6,11 @@ import logging
 import statistics
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from aiohttp import ClientSession
+
+_UK_TZ = ZoneInfo("Europe/London")
 
 from .const import (
     DEFAULT_AGILE_PRODUCT,
@@ -266,9 +269,15 @@ async def fetch_octopus_rates(
 
 
 def compute_daily_means(rates: list[dict]) -> dict[str, float]:
-    """Group half-hourly rates by date and compute daily means.
+    """Group half-hourly rates by UK local date and compute daily means.
 
-    Returns {date_str: mean_rate} dict.
+    Octopus rate ``valid_from`` is UTC. During BST, the first hour of each UK
+    day (UTC 23:00–00:00) belongs to the next UK calendar day, so a naive
+    ``valid_from[:10]`` slice misallocates those slots and biases the daily
+    mean. Bucket by ``Europe/London`` date instead so a "daily mean" really
+    means a UK-day mean.
+
+    Returns {date_str: mean_rate} dict, keyed by YYYY-MM-DD UK date.
     """
     daily: dict[str, list[float]] = {}
     for rate in rates:
@@ -276,7 +285,11 @@ def compute_daily_means(rates: list[dict]) -> dict[str, float]:
         value = rate.get("value_inc_vat")
         if not valid_from or value is None:
             continue
-        date_str = valid_from[:10]  # YYYY-MM-DD
+        try:
+            dt = datetime.fromisoformat(valid_from.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        date_str = dt.astimezone(_UK_TZ).strftime("%Y-%m-%d")
         daily.setdefault(date_str, []).append(float(value))
 
     return {date: statistics.mean(vals) for date, vals in daily.items() if vals}

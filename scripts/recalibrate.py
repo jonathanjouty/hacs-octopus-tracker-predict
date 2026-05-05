@@ -19,8 +19,11 @@ import statistics
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import aiohttp
+
+_UK_TZ = ZoneInfo("Europe/London")
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 _LOG = logging.getLogger(__name__)
@@ -182,14 +185,26 @@ async def fetch_rates(
 
 
 def compute_daily_means(rates: list[dict]) -> dict[str, float]:
-    """Group half-hourly rates by date and compute daily means."""
+    """Group half-hourly rates by UK local date and compute daily means.
+
+    Octopus rate ``valid_from`` is UTC. During BST the first hour of each UK
+    day belongs to the previous UTC date, so bucketing on ``valid_from[:10]``
+    misallocates those slots and biases the daily mean. Convert to
+    ``Europe/London`` before extracting the date.
+
+    Must match ``custom_components.tracker_predict.calibration.compute_daily_means``.
+    """
     daily: dict[str, list[float]] = {}
     for rate in rates:
         valid_from = rate.get("valid_from", "")
         value = rate.get("value_inc_vat")
         if not valid_from or value is None:
             continue
-        date_str = valid_from[:10]
+        try:
+            dt = datetime.fromisoformat(valid_from.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        date_str = dt.astimezone(_UK_TZ).strftime("%Y-%m-%d")
         daily.setdefault(date_str, []).append(float(value))
 
     return {date: statistics.mean(vals) for date, vals in daily.items() if vals}

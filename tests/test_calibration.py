@@ -135,6 +135,41 @@ class TestComputeDailyMeans:
         assert len(means) == 1
         assert abs(means["2026-03-25"] - 43.5) < 0.01
 
+    def test_bst_late_evening_slot_buckets_to_next_uk_day(self):
+        # BST: UK = UTC+1. UTC 23:00–23:30 on 2026-04-15 is 00:00–00:30 BST
+        # on 2026-04-16, so the slot belongs to UK day 04-16 not 04-15.
+        rates = [
+            {"valid_from": "2026-04-15T22:00:00Z", "value_inc_vat": 10.0},
+            {"valid_from": "2026-04-15T23:00:00Z", "value_inc_vat": 99.0},
+            {"valid_from": "2026-04-15T23:30:00Z", "value_inc_vat": 99.0},
+            {"valid_from": "2026-04-16T00:00:00Z", "value_inc_vat": 99.0},
+        ]
+        means = compute_daily_means(rates)
+        # 22:00 UTC = 23:00 BST → still 04-15 in UK
+        assert abs(means["2026-04-15"] - 10.0) < 0.01
+        # 23:00 / 23:30 UTC and 00:00 UTC the next day all → 04-16 in UK
+        assert abs(means["2026-04-16"] - 99.0) < 0.01
+
+    def test_gmt_late_evening_slot_stays_on_same_day(self):
+        # GMT (winter): UK = UTC. UTC 23:00 on 2026-12-15 is 23:00 GMT on
+        # 2026-12-15, so this slot stays on UK day 12-15.
+        rates = [
+            {"valid_from": "2026-12-15T22:00:00Z", "value_inc_vat": 10.0},
+            {"valid_from": "2026-12-15T23:00:00Z", "value_inc_vat": 20.0},
+            {"valid_from": "2026-12-16T00:00:00Z", "value_inc_vat": 99.0},
+        ]
+        means = compute_daily_means(rates)
+        assert abs(means["2026-12-15"] - 15.0) < 0.01
+        assert abs(means["2026-12-16"] - 99.0) < 0.01
+
+    def test_invalid_timestamp_is_skipped(self):
+        rates = [
+            {"valid_from": "not-a-date", "value_inc_vat": 10.0},
+            {"valid_from": "2026-03-25T00:00:00Z", "value_inc_vat": 20.0},
+        ]
+        means = compute_daily_means(rates)
+        assert means == {"2026-03-25": 20.0}
+
 
 class TestComputeRollingMeans:
     def test_single_day(self):

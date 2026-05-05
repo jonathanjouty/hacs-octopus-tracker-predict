@@ -26,17 +26,27 @@ def make_model(slope=0.56, intercept=12.75, rolling_window=14):
 
 
 def make_prices(day_configs):
-    """Generate half-hourly prices.
+    """Generate half-hourly prices for one or more UK calendar days.
+
+    ``date_str`` is interpreted as a UK local date. The generated slot
+    timestamps are UTC ISO strings whose ``Europe/London`` projection covers
+    the UK day starting at 00:00 local time. In BST the first slot is at
+    UTC 23:00 of the previous calendar day, matching how the Agile Predict
+    API publishes UK-aligned half-hour slots.
 
     day_configs: list of (date_str, num_slots, base_price, price_step)
     """
     prices = []
     for date_str, num_slots, base, step in day_configs:
+        uk_midnight = datetime.fromisoformat(f"{date_str}T00:00:00").replace(
+            tzinfo=_UK_TZ
+        )
         for i in range(num_slots):
-            hour = i // 2
-            minute = "00" if i % 2 == 0 else "30"
+            slot_utc = (uk_midnight + timedelta(minutes=30 * i)).astimezone(
+                timezone.utc
+            )
             prices.append({
-                "date_time": f"{date_str}T{hour:02d}:{minute}:00Z",
+                "date_time": slot_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "agile_pred": base + i * step,
                 "agile_low": base - 2 + i * step,
                 "agile_high": base + 2 + i * step,

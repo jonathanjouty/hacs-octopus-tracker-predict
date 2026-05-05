@@ -274,13 +274,21 @@ class TrackerPredictCoordinator(DataUpdateCoordinator[TrackerPredictData]):
         should contain recent actual Agile daily means so the rolling window is
         anchored on real data rather than only forecast values.
         """
-        # Group by date
+        # Group by UK local date. The Agile Predict API returns UTC
+        # timestamps, but in BST the first hour of each UK day is UTC 23:00
+        # the previous day, so a naive [:10] slice mis-buckets it. Convert
+        # to Europe/London first so daily means line up with how Octopus
+        # publishes Tracker rates (one per UK day).
         daily: dict[str, list[dict]] = {}
         for slot in prices:
             dt_str = slot.get("date_time", "")
             if not dt_str:
                 continue
-            date_str = dt_str[:10]
+            try:
+                dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            date_str = dt.astimezone(_UK_TZ).strftime("%Y-%m-%d")
             daily.setdefault(date_str, []).append(slot)
 
         # Build per-date spot means for pred / low / high from the forecast

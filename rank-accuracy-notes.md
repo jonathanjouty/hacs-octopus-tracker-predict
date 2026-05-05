@@ -1,11 +1,26 @@
-# Rank-accuracy notes (rework)
+# Rank-accuracy notes
 
-This is a deliberate rethink. The previous version of this file framed the
-problem narrowly around rank and proposed bypassing the regression for the
-cheapest-day sensor. That doesn't fit the actual UX — the calendar shows
-predicted Tracker prices, so the prediction has to be both **correctly
-ordered** *and* **correctly priced**. The notes below redo the problem
-framing.
+## TL;DR
+
+Investigating the rank-accuracy "drift" surfaced a real bug:
+`compute_daily_means` (and the equivalent grouping in `_transform_forecast`)
+sliced `valid_from[:10]` to bucket half-hourly rates by date. That's the
+**UTC** date. During BST the first hour of each UK day (UTC 23:00–00:00)
+belongs to the previous UTC date, so those slots were misallocated to the
+wrong UK day. The bug is invisible in GMT and kicks in every March, which
+matches when the rank metrics started cratering.
+
+A/B test on the same raw 91-day window (region A, ending 2026-05-05):
+
+| bucketing | pearson | spearman | top3/7 | R² |
+| --------- | ------- | -------- | ------ | ---- |
+| UTC (old) | 0.71    | 0.70     | 0.71   | 0.51 |
+| UK (now)  | **0.97**| **0.94** | **0.89**| **0.95** |
+
+Same data, single bucketing change. Most of what we previously called
+"underlying drift" was an artefact. Fix landed in
+`calibration.py`, `coordinator.py`, and `scripts/recalibrate.py` — convert
+`valid_from` to `Europe/London` before extracting the date.
 
 ## Goals (priority order)
 
@@ -17,12 +32,13 @@ framing.
    *percentage* difference correctly so the calendar communicates "tomorrow
    is 25% cheaper" rather than "tomorrow is 5% cheaper" without being
    misleading. Currently **unmeasured**.
-3. **Absolute price accuracy.** Predicted p/kWh close to actual p/kWh. Needed
-   so the calendar entries display believable numbers. Metric: MAE / RMSE.
-   Currently the **only** loss the calibration pipeline optimises.
+3. **Absolute price accuracy.** Predicted p/kWh close to actual p/kWh.
+   Needed so calendar entries display believable numbers. Metric: MAE /
+   RMSE.
 
-The integration today optimises (3) at the expense of (1) and (2), and (1)
-and (2) are what the user actually relies on.
+The integration historically optimised (3) at the expense of (1) and (2).
+With the bucketing fix, (1) is cheap to recover; (3) should also improve;
+(2) still needs a metric before we can target it.
 
 ## Metrics we currently track
 
@@ -45,134 +61,103 @@ directly by `scripts/recalibrate.py`.
 We **do not yet** track a magnitude metric. Adding one is a prerequisite
 for serious work on goal (2).
 
-## What the data says today
+## Findings from the drift investigation
 
-| Date  | rolling_window | R²   | Spearman ρ | Model top3/7 | Baseline top3/7 |
-| ----- | -------------- | ---- | ---------- | ------------ | --------------- |
-| 04-01 | 1              | 0.85 | 0.92       | 0.91         | 0.91            |
-| 04-06 | 1              | 0.67 | 0.89       | 0.89         | 0.89            |
-| 04-13 | 1              | 0.58 | 0.86       | 0.85         | 0.85            |
-| 04-23 | 1              | 0.56 | 0.80       | 0.78         | 0.78            |
-| 04-24 | **7**          | 0.35 | 0.62       | **0.51**     | 0.78            |
-| 04-27 | 7              | 0.34 | 0.61       | 0.50         | 0.76            |
-| 05-04 | 7              | 0.30 | 0.55       | 0.47         | 0.71            |
+The diagnostic that surfaced the bug is `scripts/drift_diagnostic.py`. For
+one region it fetches 90 days of Agile and Tracker rates and prints:
 
-(Region A shown; per-region variation is small. See JSON for the rest.)
+* Pearson at lags ±2 days (catches day-boundary alignment issues).
+* First-half vs second-half regression (catches regime shifts).
+* Rolling 30-day correlation (catches drift over the window).
+* Day-of-week residual breakdown (catches weekly patterns).
+* An A/B comparison of the old UTC-date bucketing vs the current UK-date
+  bucketing.
 
-Three things are happening at once:
+Run it with `python scripts/drift_diagnostic.py --region A`.
 
-1. **The rolling-mean change destroys rank.** From 04-24 onwards the
-   recalibration grid-search picks `rolling_window=7`. Model `top3_of_7`
-   collapses to ~0.50 while the Agile-spot baseline stays around 0.71–0.78.
-   With `rolling_window=1`, the linear transform is monotonic so model and
-   baseline ranks were identical (visible in the 04-01 → 04-23 rows). With
-   `rolling_window=7` the input barely moves day-to-day, so the prediction
-   barely moves day-to-day, so within any 7-day window everything looks
-   equally cheap. Smoothing the input flattens the output and that flatness
-   hurts both goals (1) and (2).
-2. **An underlying drift independent of the model.** The Agile-only
-   baseline drops from 0.91 → 0.71 across the period, with no model change
-   between 04-01 and 04-23. Agile's day-ordering is becoming a less
-   reliable proxy for Tracker's. Possible causes:
-   * Real regime change in Tracker pricing (a tariff parameter change
-     inside the rolling window that defines Tracker).
-   * Agile forecast quality regression.
-   * Timezone / day-boundary alignment bug in our code that worsens as the
-     window shifts.
-3. **R² also collapses (0.85 → 0.30).** This is *not* just about rank —
-   the absolute Agile↔Tracker linear relationship has weakened too. So
-   even if (1) were resolved, the absolute predictions on which the
-   calendar relies have become noisier.
+### Before the fix
 
-The grid-search optimises R², which prefers a smoothed input because
-smoothing reduces variance on the line of best fit. That objective is
-explicitly misaligned with goals (1) and (2).
+Same period (2026-02-04 → 2026-05-05, region A) showed:
 
-## Constraints any solution has to satisfy
+* Lag −1 winning at r = 0.80, lag 0 only at 0.71 — i.e. Tracker[d] looked
+  like it correlated more with Agile[d+1] than with Agile[d]. Smoking gun
+  for a day-boundary bug.
+* First half (Feb–Mar) R² = 0.95, second half (Mar–May) R² = 0.31. The
+  "regime shift" lined up almost exactly with the BST clock change on
+  2026-03-29.
+* DOW residual mean range of 2.6 p/kWh.
+* Spearman 0.95 → 0.49 between halves; top3/7 0.85 → 0.53.
+* GMT-only window (Dec 20 → Mar 20): no anomalies at all. Lag 0 = 0.97,
+  R² = 0.93, DOW range 0.4 p/kWh, top3/7 stable around 0.95.
 
-- The calendar entries display the **predicted Tracker price**, so we can't
-  separate "rank picker" from "price displayer" without showing
-  contradictory numbers next to each other on the same UI surface.
-- The integration must stay dependency-free for HACS — pure Python, no
-  numpy / scipy.
-- Calibration must remain runnable both from CI (the quarterly
-  `recalibrate.yml` workflow) and from the live coordinator on first start.
+The "BST-only" pattern was the giveaway.
 
-## Candidate directions
+### After the fix
 
-No priority ordering yet. Each should be evaluated against the *combined*
-{rank, magnitude, MAE} criteria, not just one of them in isolation.
+Same period, same data, just UK-date bucketing:
 
-- **Drop the rolling-mean smoothing, accept the extreme-day bias.** The
-  rolling-mean change (commit `0f47011`, 2026-04-12) was introduced to
-  reduce systematic over-prediction on high-Agile days and
-  under-prediction on low-Agile days. If that bias is small in p/kWh
-  terms, reverting buys back rank quality cheaply. We need a pre/post MAE
-  comparison to know the cost. Quickest experiment.
-- **Decompose level vs day-effect.** Use the rolling mean as the *level*
-  feature and `(spot − rolling_mean)` as a *day deviation* feature.
-  Tracker is itself a smoothed wholesale, so this split has a real
-  physical basis. Two-feature linear fit is still pure-Python and avoids
-  the smoothing-flattens-output failure mode.
-- **Non-linear (piecewise / quantile) transform on the spot input.** Keep
-  the spot daily mean (preserves rank), correct the extreme-day bias with
-  a non-linear shape rather than smoothing. Slightly harder to fit
-  without numpy but doable.
-- **Change the recalibration objective.** The grid-search currently picks
-  `rolling_window` on R². Switch the search objective to
-  `rank_top3_of_7` — or a weighted blend of rank and MAE — so it can no
-  longer choose a window that wins on R² while losing on rank. Cheap to
-  try; works whether or not the underlying parametrisation also changes.
-- **Investigate the underlying drift first.** Before changing the model,
-  plot daily Agile spot vs daily Tracker for the worst-baseline region
-  across the 90-day window. If there's a timezone-alignment or
-  day-boundary bug, it'll be visible. Zero-cost diagnostic that may
-  invalidate parts of the parametrisation work above.
-- **Per-DOW or per-month bias term.** If Tracker has a weekly pattern
-  Agile doesn't, a small categorical offset on top of Agile rank could
-  help. Cheap to test; mostly relevant if rank is still bad after the
-  smoothing question is resolved.
-- **Use Agile high/low band width as a confidence weight.** The Predict
-  API returns confidence intervals. Days with wide bands may rank
-  unreliably; we could de-weight or flag them. Defer until rank is
-  otherwise good.
-- **Shorter calibration window.** 90 days may include stale regime data.
-  Try 30 / 45 / 60 once a rank-aware objective is in.
+* Lag 0 wins at r = 0.97. No alignment warning.
+* R² = 0.95 across the full 91-day window.
+* DOW residual mean range collapses (<0.5 p/kWh).
+* GMT-only diagnostic is byte-identical between old and new bucketing —
+  the fix is a no-op in winter.
 
-## Metrics worth adding
+## What this means for the older notes table
 
-- **Magnitude metric.** For every pair of days within a contiguous 7-day
-  window, what fraction has the predicted % difference within ±X% of the
-  actual? Or: regress predicted day-pair % differences against actual and
-  report the slope (1.0 = perfect, < 1.0 = predictions are too flat).
-  Without this we can't tell whether smoothing is also collapsing
-  meaningful day-to-day spreads.
-- **Out-of-sample rank.** Fit on the first 60 days of the 90, evaluate
-  rank on the remaining 30. Removes the in-sample optimism baked into
-  every current row of the table.
+The previous version of this file had a table showing `rank_top3_of_7`
+falling from 0.91 (04-01) to 0.78 (04-23) to 0.51 (04-24). All of those
+numbers were computed against UTC-bucketed daily means. They overstate
+both:
 
-## Recommended next moves
+* The "underlying drift" — most of it was the BST bucketing bug worsening
+  as the window accumulated more BST days.
+* The rolling-window damage — a chunk of the rank loss between 04-23 and
+  04-24 came from BST entering the calibration window, not from
+  `rolling_window` jumping from 1 to 7.
 
-1. **Investigate the underlying drift first.** It's free, may surface a
-   data bug that changes everything below. A small ad-hoc plotting script
-   over `agile_daily` and `tracker_daily` for one region's 90-day window.
-2. **Change the recalibration objective from R² to a rank-aware blend.**
-   This is a one-function change in `scripts/recalibrate.py`. With it in
-   place, the grid-search is no longer actively choosing the
-   rank-destroying window; further parametrisation experiments become
-   safer.
-3. **Add a magnitude metric** to recalibrate output and backfill it. We
-   don't currently know whether goal (2) is met or not; we can't improve
-   what we can't see.
-4. **Then experiment with parametrisation.** Compare on the new combined
-   {rank, magnitude, MAE} basis: window=1, level+deviation decomposition,
-   piecewise/quantile transform. Pick the best.
-5. **Defer per-DOW, band-weighting, shorter calibration window.** They're
-   second-order; only attempt if (1)–(4) leave a measurable gap.
+We should re-backfill `calibration_history.json` after the next live
+recalibration so the historical metrics reflect the corrected bucketing.
 
-The "bypass the regression for the cheapest-day sensor" idea from the
-previous version of this file is *not* on this list. It would either
-display Agile prices in the calendar (wrong magnitude) or display the
-model's smoothed Tracker estimate next to a rank that doesn't match it
-(internally inconsistent UI). Neither is acceptable for the
-calendar-driven charging workflow.
+## Candidate directions (revised)
+
+In priority order. With the bucketing bug fixed, the previous priorities
+shift.
+
+1. **Recalibrate.** The current `DEFAULT_CALIBRATION` slope/intercept and
+   `DEFAULT_ROLLING_WINDOW` were fit on UTC-bucketed data and inherit the
+   bias. Run `python scripts/recalibrate.py` with the fixed code, inspect
+   the new rank metrics, decide whether `--update-const` is appropriate.
+2. **Re-evaluate `rolling_window` selection.** With BST noise removed,
+   window=1 may now beat window=7 on R² as well as on rank — meaning the
+   grid-search will pick the rank-friendly option naturally. If not,
+   change the grid-search objective from R² to something rank-aware (e.g.
+   `0.5 * R² + 0.5 * rank_top3_of_7`).
+3. **Add a magnitude metric** to recalibration output and backfill it.
+   Concrete proposal: for every pair of days within each contiguous 7-day
+   window, compute the predicted % difference and the actual % difference;
+   regress predicted on actual and record the slope. 1.0 = perfect, < 1.0
+   = predictions are too flat (the smoothing failure mode).
+4. **Re-backfill `calibration_history.json`.** Once recalibration has run
+   with the fix, run `scripts/backfill_rank_metrics.py` to regenerate
+   metrics across all entries. Old rows still have UTC-biased
+   slope/intercept stored, so the regenerated metrics will still be
+   imperfect for them — the value is mostly to track the *post-fix* trend
+   going forward.
+5. **Investigate any remaining DOW pattern.** With the fix the residual
+   range should be small, but worth double-checking against more regions.
+6. **Defer:** band-weighting, shorter calibration windows. Both were
+   speculative against an artefact-heavy signal. Re-evaluate after (1)–(3).
+
+The previously-listed "bypass the regression for the cheapest-day sensor"
+direction is still rejected — it would break the calendar UX. With the
+bucketing fix in place it's also no longer needed.
+
+## Next concrete steps
+
+1. Run `python scripts/recalibrate.py` (no `--update-const` first), inspect
+   per-region rank metrics and the new `rolling_window` selections. If
+   they look good, run with `--update-const` to refresh the per-region
+   defaults baked into `const.py`.
+2. Run `python scripts/backfill_rank_metrics.py` to refresh metrics in
+   `calibration_history.json`.
+3. Open a follow-up to add the magnitude metric described above.
