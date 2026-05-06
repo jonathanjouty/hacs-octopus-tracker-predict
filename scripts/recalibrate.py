@@ -70,7 +70,11 @@ DEFAULT_TRACKER_PRODUCT = KNOWN_TRACKER_PRODUCTS[0]
 CALIBRATION_DAYS = 90
 MIN_SAMPLES = 7
 # Candidate rolling windows (days) tried during calibration; best R² wins.
-ROLLING_WINDOW_CANDIDATES = [7, 14, 21, 30]
+# Window=1 is the unsmoothed spot daily mean — included so the grid-search
+# can pick it when smoothing offers no R² benefit (which is the case once
+# the UK-day bucketing fix is in: smoothing flattens both the input and
+# the output without improving the linear fit).
+ROLLING_WINDOW_CANDIDATES = [1, 7, 14, 21, 30]
 
 
 # ── API helpers ──────────────────────────────────────────────────────────────────

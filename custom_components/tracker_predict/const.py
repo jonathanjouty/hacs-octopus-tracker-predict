@@ -17,31 +17,34 @@ DEFAULT_CALIBRATION_INTERVAL = 168  # 7 days in hours
 DEFAULT_CHEAP_THRESHOLD_PERCENTILE = 20
 
 # Fallback linear model — overall average used when region lookup fails
-DEFAULT_SLOPE = 0.6169
-DEFAULT_INTERCEPT = 11.97
+DEFAULT_SLOPE = 0.6385
+DEFAULT_INTERCEPT = 11.5
 # Rolling window (days) for the Agile mean used as the model input feature.
-# Tracker rates are set from a rolling average of wholesale prices, so using
-# a trailing mean rather than the single-day spot price reduces the bias at extremes.
-DEFAULT_ROLLING_WINDOW = 7
+# After fixing UTC→UK day-bucketing in compute_daily_means, the spot daily
+# mean (window=1) wins the recalibration grid-search across every region:
+# smoothing the input flattens the predictions and hurts both R² and rank.
+# Larger windows are still tried (see ROLLING_WINDOW_CANDIDATES in
+# scripts/recalibrate.py) in case future data shifts the trade-off.
+DEFAULT_ROLLING_WINDOW = 1
 
 # Per-region default calibration (slope, intercept).
 # All regions currently share the same fallback values. The quarterly
 # recalibrate.yml workflow will differentiate them with real API data.
 DEFAULT_CALIBRATION: dict[str, tuple[float, float]] = {
-    "A": (0.6283, 12.15),
-    "B": (0.6459, 11.19),
-    "C": (0.6536, 11.45),
-    "D": (0.6098, 13.13),
-    "E": (0.624, 11.26),
-    "F": (0.6191, 11.3),
-    "G": (0.6241, 12.63),
-    "H": (0.6236, 12.14),
-    "J": (0.6018, 12.45),
-    "K": (0.5978, 12.2),
-    "L": (0.5728, 12.37),
-    "M": (0.6541, 11.0),
-    "N": (0.6272, 11.48),
-    "P": (0.5544, 12.85),
+    "A": (0.6543, 11.59),
+    "B": (0.6726, 10.64),
+    "C": (0.6865, 10.8),
+    "D": (0.634, 12.58),
+    "E": (0.6468, 10.77),
+    "F": (0.6378, 10.88),
+    "G": (0.6469, 12.13),
+    "H": (0.6459, 11.66),
+    "J": (0.6197, 12.03),
+    "K": (0.6125, 11.84),
+    "L": (0.581, 12.13),
+    "M": (0.688, 10.32),
+    "N": (0.6521, 10.94),
+    "P": (0.5609, 12.64),
 }
 
 # All known Octopus Tracker (SILVER) product codes, newest first.
