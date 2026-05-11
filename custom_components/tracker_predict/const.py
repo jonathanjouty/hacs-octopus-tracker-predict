@@ -17,8 +17,8 @@ DEFAULT_CALIBRATION_INTERVAL = 168  # 7 days in hours
 DEFAULT_CHEAP_THRESHOLD_PERCENTILE = 20
 
 # Fallback linear model — overall average used when region lookup fails
-DEFAULT_SLOPE = 0.6385
-DEFAULT_INTERCEPT = 11.5
+DEFAULT_SLOPE = 0.635
+DEFAULT_INTERCEPT = 11.49
 # Rolling window (days) for the Agile mean used as the model input feature.
 # After fixing UTC→UK day-bucketing in compute_daily_means, the spot daily
 # mean (window=1) wins the recalibration grid-search across every region:
@@ -31,20 +31,20 @@ DEFAULT_ROLLING_WINDOW = 1
 # All regions currently share the same fallback values. The quarterly
 # recalibrate.yml workflow will differentiate them with real API data.
 DEFAULT_CALIBRATION: dict[str, tuple[float, float]] = {
-    "A": (0.6543, 11.59),
-    "B": (0.6726, 10.64),
-    "C": (0.6865, 10.8),
-    "D": (0.634, 12.58),
-    "E": (0.6468, 10.77),
-    "F": (0.6378, 10.88),
-    "G": (0.6469, 12.13),
-    "H": (0.6459, 11.66),
-    "J": (0.6197, 12.03),
-    "K": (0.6125, 11.84),
-    "L": (0.581, 12.13),
-    "M": (0.688, 10.32),
-    "N": (0.6521, 10.94),
-    "P": (0.5609, 12.64),
+    "A": (0.651, 11.58),
+    "B": (0.6694, 10.63),
+    "C": (0.6834, 10.79),
+    "D": (0.6305, 12.57),
+    "E": (0.6434, 10.76),
+    "F": (0.6343, 10.87),
+    "G": (0.6434, 12.12),
+    "H": (0.6424, 11.65),
+    "J": (0.6161, 12.02),
+    "K": (0.6088, 11.83),
+    "L": (0.5771, 12.13),
+    "M": (0.6849, 10.31),
+    "N": (0.6487, 10.93),
+    "P": (0.5569, 12.63),
 }
 
 # All known Octopus Tracker (SILVER) product codes, newest first.
