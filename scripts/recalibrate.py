@@ -543,10 +543,16 @@ def update_history_file(results: dict[str, dict], history_path: Path) -> None:
             _LOG.warning("Could not read %s, starting fresh", history_path)
             history = []
 
-    # Compute drift deltas vs previous entry
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    # Compute drift deltas vs the most recent entry from an earlier date, so a
+    # same-day re-run (e.g. manual dispatch after the scheduled run) compares
+    # against the previous snapshot rather than against itself.
     prev_regions: dict[str, dict] = {}
-    if history:
-        prev_regions = history[-1].get("regions", {})
+    for prev_entry in reversed(history):
+        if prev_entry.get("date") != today:
+            prev_regions = prev_entry.get("regions", {})
+            break
 
     regions_entry: dict[str, dict] = {}
     for region, data in results.items():
@@ -564,10 +570,11 @@ def update_history_file(results: dict[str, dict], history_path: Path) -> None:
             entry["intercept_delta"] = None
         regions_entry[region] = entry
 
-    history.append({
-        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
-        "regions": regions_entry,
-    })
+    # Keep one entry per date: a re-run on the same day replaces that day's
+    # snapshot instead of appending a duplicate. Entries stay sorted by date.
+    by_date = {entry.get("date"): entry for entry in history}
+    by_date[today] = {"date": today, "regions": regions_entry}
+    history = [by_date[d] for d in sorted(by_date)]
 
     history_path.write_text(json.dumps(history, indent=2) + "\n")
     _LOG.info("Updated history file %s (%d entries)", history_path, len(history))
