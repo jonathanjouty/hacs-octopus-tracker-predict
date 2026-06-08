@@ -7,7 +7,7 @@ The integration is **functional and tested in a real HA instance**. Core logic i
 ### What works
 
 - Config flow with region selection
-- Options flow to override poll interval, calibration days/interval, cheap-threshold percentile, and Agile/Tracker product codes after setup
+- Options flow to override poll interval, calibration days/interval, and Agile/Tracker product codes after setup
 - Agile Predict API fetching with fallback to alt endpoint
 - Octopus historical rate fetching with pagination
 - Tracker product discovery by probing `KNOWN_TRACKER_PRODUCTS` (the listing API delists Tracker); Agile via listing API with fallback

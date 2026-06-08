@@ -15,7 +15,6 @@ custom_components/tracker_predict/   # The HA integration
   coordinator.py       # DataUpdateCoordinator — fetches Agile Predict, transforms to Tracker estimates
   sensor.py            # 5 sensor entities (today rank, forecast, cheapest 5d, cheapest 10d, forecast generated)
   calendar.py          # Calendar entity (one all-day event per forecast day)
-  binary_sensor.py     # "Cheap today" binary sensor — present but NOT registered (not in PLATFORMS)
   manifest.json        # HACS/HA metadata
   strings.json         # UI strings
   translations/en.json # English translations

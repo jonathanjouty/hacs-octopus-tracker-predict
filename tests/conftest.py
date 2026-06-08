@@ -44,11 +44,6 @@ class _FakeSensorEntity(_FakeEntity):
     pass
 
 
-class _FakeBinarySensorEntity(_FakeEntity):
-    """Stand-in for BinarySensorEntity."""
-    pass
-
-
 class _FakeCalendarEntity(_FakeEntity):
     """Stand-in for CalendarEntity."""
     pass
@@ -92,9 +87,6 @@ _update_coord_mock.UpdateFailed = type("UpdateFailed", (Exception,), {})
 
 _sensor_mock = MagicMock()
 _sensor_mock.SensorEntity = _FakeSensorEntity
-
-_binary_sensor_mock = MagicMock()
-_binary_sensor_mock.BinarySensorEntity = _FakeBinarySensorEntity
 
 _entity_platform_mock = MagicMock()
 _entity_platform_mock.CoordinatorEntity = _FakeCoordinatorEntity
@@ -156,7 +148,6 @@ _MOCKED_MODULES = {
     "homeassistant.helpers.device_registry": _device_registry_mock,
     "homeassistant.components": MagicMock(),
     "homeassistant.components.sensor": _sensor_mock,
-    "homeassistant.components.binary_sensor": _binary_sensor_mock,
     "homeassistant.components.calendar": _calendar_mock,
     "voluptuous": _vol_mock,
 }
