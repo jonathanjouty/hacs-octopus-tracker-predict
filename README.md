@@ -258,8 +258,8 @@ No API keys or authentication are required — both Agile Predict and the Octopu
 ## Limitations
 
 - **Forecast accuracy degrades beyond ~5 days** — confidence is marked `low` for days 6+
-- **Hardcoded Tracker product code**: Uses `SILVER-24-04-03`. If Octopus changes this code, calibration will silently fall back to the default model until manually updated
-- **Default model is East England 2025 data**: On first install (before calibration completes), predictions use slope=0.56 / intercept=12.75 — reasonable for most UK regions but may be slightly off
+- **Tracker product code is discovered from a known list**: Octopus delists Tracker products from their public listing API, so the integration probes a built-in list of known codes (currently active: `SILVER-25-09-02`) to find the live tariff. If Octopus releases a newer Tracker version, calibration falls back to per-region defaults until the new code is added — you can also set it manually in the integration's options
+- **Per-region defaults until first calibration**: On first install (before the first live calibration completes), predictions use built-in per-region slope/intercept defaults — reasonable for most UK regions but may be slightly off
 - **Calibration model may be stale after long outage**: The model is persisted to HA storage and survives restarts, but if the Octopus API is unreachable for extended periods the cached model may drift
 
 ---
