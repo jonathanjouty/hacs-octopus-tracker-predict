@@ -72,7 +72,7 @@ class TestLoadCachedModel:
 
         assert result is False
         # Should still have the default model
-        assert coord._model.slope == 0.56
+        assert coord._model.slope == default_model().slope
         assert coord._last_calibration is None
 
     async def test_returns_false_for_invalid_data(self):
@@ -83,7 +83,7 @@ class TestLoadCachedModel:
         result = await coord._async_load_cached_model()
 
         assert result is False
-        assert coord._model.slope == 0.56  # default
+        assert coord._model.slope == default_model().slope  # default
 
     async def test_returns_false_for_non_numeric_values(self):
         store = FakeStore()
@@ -99,7 +99,7 @@ class TestLoadCachedModel:
         result = await coord._async_load_cached_model()
 
         assert result is False
-        assert coord._model.slope == 0.56  # default
+        assert coord._model.slope == default_model().slope  # default
 
     async def test_coerces_string_numbers(self):
         """Values stored as strings (e.g. from manual edits) are coerced."""

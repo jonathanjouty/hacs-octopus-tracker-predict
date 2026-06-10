@@ -15,13 +15,11 @@ from .const import (
     CONF_AGILE_PRODUCT_CODE,
     CONF_CALIBRATION_DAYS,
     CONF_CALIBRATION_INTERVAL,
-    CONF_CHEAP_THRESHOLD_PERCENTILE,
     CONF_POLL_INTERVAL,
     CONF_REGION,
     CONF_TRACKER_PRODUCT_CODE,
     DEFAULT_CALIBRATION_DAYS,
     DEFAULT_CALIBRATION_INTERVAL,
-    DEFAULT_CHEAP_THRESHOLD_PERCENTILE,
     DEFAULT_POLL_INTERVAL,
     DEFAULT_REGION,
     DOMAIN,
@@ -107,13 +105,6 @@ class TrackerPredictOptionsFlow(OptionsFlow):
                             CONF_CALIBRATION_INTERVAL, DEFAULT_CALIBRATION_INTERVAL
                         ),
                     ): vol.All(int, vol.Range(min=1)),
-                    vol.Optional(
-                        CONF_CHEAP_THRESHOLD_PERCENTILE,
-                        default=options.get(
-                            CONF_CHEAP_THRESHOLD_PERCENTILE,
-                            DEFAULT_CHEAP_THRESHOLD_PERCENTILE,
-                        ),
-                    ): vol.All(int, vol.Range(min=1, max=99)),
                     vol.Optional(
                         CONF_AGILE_PRODUCT_CODE,
                         default=options.get(CONF_AGILE_PRODUCT_CODE, ""),

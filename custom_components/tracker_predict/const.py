@@ -6,7 +6,6 @@ CONF_REGION = "region"
 CONF_POLL_INTERVAL = "poll_interval_minutes"
 CONF_CALIBRATION_DAYS = "calibration_days"
 CONF_CALIBRATION_INTERVAL = "calibration_interval_hours"
-CONF_CHEAP_THRESHOLD_PERCENTILE = "cheap_threshold_percentile"
 CONF_AGILE_PRODUCT_CODE = "agile_product_code"
 CONF_TRACKER_PRODUCT_CODE = "tracker_product_code"
 
@@ -14,7 +13,6 @@ DEFAULT_REGION = "A"
 DEFAULT_POLL_INTERVAL = 60
 DEFAULT_CALIBRATION_DAYS = 60
 DEFAULT_CALIBRATION_INTERVAL = 168  # 7 days in hours
-DEFAULT_CHEAP_THRESHOLD_PERCENTILE = 20
 
 # Fallback linear model — overall average used when region lookup fails
 DEFAULT_SLOPE = 0.6182
