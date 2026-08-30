@@ -50,8 +50,10 @@ DEFAULT_CALIBRATION: dict[str, tuple[float, float]] = {
 # API, so we probe these codes directly to find the currently-active one.
 # Add new codes here when Octopus releases a new Tracker version.
 KNOWN_TRACKER_PRODUCTS = [
+    "SILVER-26-04-01",       # April 2026 v1
     "SILVER-25-09-02",       # September 2025 v1
-    "SILVER-25-04-15",       # April 2025 v1
+    "SILVER-25-04-15",       # April 2025 v2
+    "SILVER-25-04-11",       # April 2025 v1
     "SILVER-24-12-31",       # December 2024 v1
     "SILVER-24-10-01",       # October 2024 v1
     "SILVER-24-07-01",       # July 2024 v1

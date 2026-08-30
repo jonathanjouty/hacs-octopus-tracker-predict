@@ -94,6 +94,6 @@ HACS requires a git tag matching the version in `manifest.json` and a correspond
 
 ## Known issues
 
-- **Tracker product discovery relies on a hardcoded list**: Octopus delists Tracker products from their listing API, so we probe `KNOWN_TRACKER_PRODUCTS` (in `const.py`) newest-first for the active code (currently `SILVER-25-09-02`). When Octopus releases a new Tracker version, add its code to that list.
+- **Tracker product discovery relies on a hardcoded list**: Octopus delists Tracker products from their listing API, so we probe `KNOWN_TRACKER_PRODUCTS` (in `const.py`) newest-first for the active code (currently `SILVER-26-04-01`). When Octopus releases a new Tracker version, add its code to that list.
 - **Agile product discovery may break**: Discovers via the listing API but falls back to `AGILE-24-10-01`.
 - **Default model may drift**: The overall fallback (slope≈0.62 / intercept≈11.4) and the per-region `DEFAULT_CALIBRATION` values are refreshed by the weekly recalibration workflow, but are only used until a region's first live calibration completes.
