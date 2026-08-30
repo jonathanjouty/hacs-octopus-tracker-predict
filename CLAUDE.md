@@ -40,7 +40,7 @@ rank-accuracy-notes.md   # Findings from rank-metric backfill + candidate next s
 
 - **No homeassistant dependency in tests**: `tests/conftest.py` mocks all `homeassistant.*` modules with fake base classes. This lets us run tests without installing HA.
 - **Pure Python linear regression**: No numpy/scipy — keeps `manifest.json` requirement-free for HACS.
-- **Tracker product discovery**: Octopus delists Tracker products from the listing API, so we probe `KNOWN_TRACKER_PRODUCTS` (in `const.py`) newest-first and use the first still-active code (default `SILVER-25-09-02`). Agile uses the normal listing API with an `AGILE-24-10-01` fallback. Both are overridable via the options flow.
+- **Tracker product discovery**: Octopus delists Tracker products from the listing API, so we probe `KNOWN_TRACKER_PRODUCTS` (in `const.py`) newest-first and use the first still-active code (default `SILVER-26-04-01`). Agile uses the normal listing API with an `AGILE-24-10-01` fallback. Both are overridable via the options flow.
 - **Per-region default calibration**: `DEFAULT_CALIBRATION` dict in `const.py` stores slope/intercept per region. Recalibrated automatically from historical data when possible, with `scripts/recalibrate.py` for periodic updates.
 
 ## Running tests
