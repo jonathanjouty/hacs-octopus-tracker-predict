@@ -26,14 +26,17 @@ tests/
   test_calendar.py     # Unit tests for the calendar entity
   test_persistence.py  # Unit tests for calibration model storage/restore
   test_live_api.py     # Live API tests (call real Agile Predict + Octopus APIs)
+  test_eval_harness.py # Unit tests for the backtest harness metrics / walk-forward logic
 
 scripts/
   recalibrate.py            # Standalone script to recalibrate per-region defaults from live API data
   backfill_rank_metrics.py  # Backfill rank-correlation metrics into calibration_history.json
   drift_diagnostic.py       # Diagnostic for the rank-accuracy / day-bucketing investigation
+  eval_harness.py           # Walk-forward backtest vs archived Agile Predict forecasts (see backtest-notes.md)
 
 tracker-predict-spec.md  # Original spec document
 rank-accuracy-notes.md   # Findings from rank-metric backfill + candidate next steps
+backtest-notes.md        # How to run the backtest harness, current results, where the error comes from
 ```
 
 ## Key technical decisions
@@ -47,14 +50,14 @@ rank-accuracy-notes.md   # Findings from rank-metric backfill + candidate next s
 
 ```bash
 pip install pytest "pytest-asyncio>=0.23" aiohttp
-pytest tests/test_calibration.py tests/test_coordinator.py tests/test_calendar.py tests/test_persistence.py -v   # unit tests
+pytest tests/test_calibration.py tests/test_coordinator.py tests/test_calendar.py tests/test_persistence.py tests/test_eval_harness.py -v   # unit tests
 pytest tests/test_live_api.py -v                                 # live API tests (needs network)
 ```
 
 ## CI
 
 GitHub Actions (`.github/workflows/ci.yml`):
-- **test**: Unit tests on Python 3.13 + 3.14 (runs `test_calibration.py` + `test_coordinator.py` only)
+- **test**: Unit tests on Python 3.13 + 3.14 (runs `test_calibration.py`, `test_coordinator.py`, `test_eval_harness.py`)
 - **live-api**: Live API tests (runs after unit tests pass)
 - **validate**: JSON syntax + Python compile checks
 
@@ -67,6 +70,10 @@ GitHub Actions (`.github/workflows/recalibrate.yml`):
 - The `conftest.py` fake classes need `__class_getitem__` to support generic syntax like `DataUpdateCoordinator[T]`
 - `pytest-asyncio>=0.23` requires `asyncio_mode = "auto"` in pyproject.toml (no manual `@pytest.mark.asyncio` needed)
 - Octopus products API changes frequently — product discovery may break; prefer hardcoded known-good product codes
+
+## Evaluating model changes
+
+`python scripts/eval_harness.py --regions all` backtests candidate models against the Agile Predict forecasts users actually saw, and scores them against published Tracker rates. It uses walk-forward fitting, so nothing leaks. Add a candidate to `make_candidates()` and compare it with `production`. Agile Predict only serves about 2 months of forecast history, so each run merges forecasts into `.eval_cache/` (gitignored), and the backtest window grows with every run.
 
 ## External APIs
 
